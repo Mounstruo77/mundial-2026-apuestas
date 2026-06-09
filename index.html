@@ -1615,6 +1615,46 @@
   .modal-field input:focus { border-color: var(--grass); box-shadow: 0 0 0 3px var(--grass-glow); }
   .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; }
   .modal-actions .btn { flex: 1; justify-content: center; }
+  .modal-choices {
+    display: flex;
+    flex-direction: column;
+    gap: .45rem;
+    max-height: 46vh;
+    overflow-y: auto;
+    margin-bottom: 1rem;
+  }
+  .modal-choice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .6rem;
+    width: 100%;
+    text-align: left;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    font-family: 'Manrope', sans-serif;
+    font-size: 1rem;
+    font-weight: 700;
+    padding: .85rem 1rem;
+    cursor: pointer;
+    min-height: 48px;
+    transition: border-color .15s, background .15s, transform .1s;
+  }
+  .modal-choice:hover, .modal-choice:focus {
+    border-color: var(--neon);
+    background: var(--bg-hover);
+    outline: none;
+  }
+  .modal-choice:active { transform: scale(.99); }
+  .modal-choice-hint {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
 
   /* ═════════ RESPONSIVE ═════════ */
   /* ─── Global touch-target minimum ────────────────────────────── */
@@ -1872,6 +1912,7 @@
     <div class="modal-field" id="modal-field" style="display:none">
       <input id="modal-input" type="password" inputmode="numeric" autocomplete="off" maxlength="20">
     </div>
+    <div class="modal-choices" id="modal-choices" style="display:none"></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" id="modal-cancel" type="button">Cancelar</button>
       <button class="btn btn-primary" id="modal-ok" type="button">Aceptar</button>
@@ -2677,18 +2718,21 @@ function updateIdentityUI() {
 async function openIdentityPicker() {
   if (!cloudOn) { showToast('Sin servidor: modo local'); return; }
   if (!state.players.length) { showToast('Aún no hay participantes inscritos'); return; }
-  // Construir lista de nombres
-  const options = state.players.map(p => p.name || '(sin nombre)');
-  const choice = await showModal({
+
+  // Lista de nombres para tocar (botón por jugador)
+  const choiceId = await showModal({
     title: '¿Quién eres?',
-    body: 'Elige tu nombre de la lista escribiendo el número:\n\n' +
-          state.players.map((p, i) => `${i + 1}. ${p.name || '(sin nombre)'}`).join('\n'),
-    input: true, inputType: 'text', placeholder: 'Número (ej: 1)', okText: 'Siguiente',
+    body: 'Toca tu nombre en la lista:',
+    choices: state.players.map(p => ({
+      label: p.name || '(sin nombre)',
+      value: p.id,
+      hint: p.hasCode ? '🔒 código' : '',
+    })),
+    cancelText: 'Cancelar',
   });
-  if (choice === null) return;
-  const idx = parseInt(choice.trim(), 10) - 1;
-  if (!(idx >= 0 && idx < state.players.length)) { showToast('Número inválido'); return; }
-  const player = state.players[idx];
+  if (choiceId === null) return;
+  const player = state.players.find(p => p.id === choiceId);
+  if (!player) { showToast('Jugador no encontrado'); return; }
 
   let code = '';
   if (player.hasCode) {
@@ -2742,43 +2786,71 @@ function showToast(msg) {
 //    Con input: resuelve el texto, o null si se cancela.
 //    Sin input: resuelve true (aceptar) o false (cancelar).
 function showModal({ title, body = '', input = false, inputType = 'password',
-                    placeholder = '', okText = 'Aceptar', cancelText = 'Cancelar' }) {
+                    placeholder = '', okText = 'Aceptar', cancelText = 'Cancelar',
+                    choices = null }) {
   return new Promise(resolve => {
     const overlay = document.getElementById('modal-overlay');
     const field   = document.getElementById('modal-field');
     const inp     = document.getElementById('modal-input');
     const okBtn   = document.getElementById('modal-ok');
     const cancelBtn = document.getElementById('modal-cancel');
+    const choicesEl = document.getElementById('modal-choices');
 
     document.getElementById('modal-title').textContent = title || '';
     document.getElementById('modal-body').textContent  = body || '';
-    okBtn.textContent = okText;
     cancelBtn.textContent = cancelText;
-
-    field.style.display = input ? 'block' : 'none';
-    if (input) {
-      inp.type = inputType;
-      inp.placeholder = placeholder;
-      inp.value = '';
-      inp.maxLength = inputType === 'password' ? 20 : 22;
-      inp.style.letterSpacing = inputType === 'password' ? '.2em' : 'normal';
-      inp.style.textAlign     = inputType === 'password' ? 'center' : 'left';
-      inp.inputMode = inputType === 'password' ? 'numeric' : 'text';
-    }
-
-    overlay.classList.add('show');
-    overlay.setAttribute('aria-hidden', 'false');
-    setTimeout(() => (input ? inp : okBtn).focus(), 60);
 
     const done = (val) => {
       overlay.classList.remove('show');
       overlay.setAttribute('aria-hidden', 'true');
       okBtn.onclick = cancelBtn.onclick = overlay.onclick = inp.onkeydown = null;
+      okBtn.style.display = '';
+      choicesEl.style.display = 'none';
+      choicesEl.innerHTML = '';
       resolve(val);
     };
+
+    if (choices) {
+      // Modo lista de botones (ej: "¿Quién eres?")
+      field.style.display = 'none';
+      okBtn.style.display = 'none';
+      choicesEl.style.display = 'flex';
+      choicesEl.innerHTML = '';
+      choices.forEach(c => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'modal-choice';
+        b.innerHTML = `<span>${escapeHTML(c.label)}</span>${c.hint ? `<span class="modal-choice-hint">${escapeHTML(c.hint)}</span>` : ''}`;
+        b.onclick = () => done(c.value);
+        choicesEl.appendChild(b);
+      });
+    } else {
+      choicesEl.style.display = 'none';
+      choicesEl.innerHTML = '';
+      okBtn.style.display = '';
+      okBtn.textContent = okText;
+      field.style.display = input ? 'block' : 'none';
+      if (input) {
+        inp.type = inputType;
+        inp.placeholder = placeholder;
+        inp.value = '';
+        inp.maxLength = inputType === 'password' ? 20 : 22;
+        inp.style.letterSpacing = inputType === 'password' ? '.2em' : 'normal';
+        inp.style.textAlign     = inputType === 'password' ? 'center' : 'left';
+        inp.inputMode = inputType === 'password' ? 'numeric' : 'text';
+      }
+    }
+
+    overlay.classList.add('show');
+    overlay.setAttribute('aria-hidden', 'false');
+    setTimeout(() => {
+      if (choices) { const f = choicesEl.querySelector('.modal-choice'); if (f) f.focus(); }
+      else (input ? inp : okBtn).focus();
+    }, 60);
+
     okBtn.onclick     = () => done(input ? inp.value : true);
-    cancelBtn.onclick = () => done(input ? null : false);
-    overlay.onclick   = (e) => { if (e.target === overlay) done(input ? null : false); };
+    cancelBtn.onclick = () => done(choices ? null : (input ? null : false));
+    overlay.onclick   = (e) => { if (e.target === overlay) done(choices ? null : (input ? null : false)); };
     inp.onkeydown     = (e) => {
       if (e.key === 'Enter')  { e.preventDefault(); done(input ? inp.value : true); }
       if (e.key === 'Escape') { e.preventDefault(); done(input ? null : false); }
