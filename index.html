@@ -397,6 +397,177 @@
     font-weight: 600;
   }
 
+  /* ═════════ INSCRIPCIÓN + MONTOS ═════════ */
+  .enroll-form {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: .5rem;
+    margin-bottom: 1rem;
+  }
+  .enroll-input {
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    font-family: 'Manrope', sans-serif;
+    font-size: .94rem;
+    font-weight: 500;
+    padding: .65rem .8rem;
+    outline: none;
+    min-height: 44px;
+    transition: border-color .18s, box-shadow .18s;
+  }
+  .enroll-input:focus { border-color: var(--grass); box-shadow: 0 0 0 3px var(--grass-glow); }
+  .enroll-input::placeholder { color: var(--muted); font-weight: 400; }
+  .enroll-amount {
+    display: flex;
+    align-items: center;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    padding-left: .6rem;
+    min-height: 44px;
+    transition: border-color .18s, box-shadow .18s;
+  }
+  .enroll-amount:focus-within { border-color: var(--grass); box-shadow: 0 0 0 3px var(--grass-glow); }
+  .enroll-amount .enroll-prefix {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    color: var(--neon);
+    font-size: .9rem;
+  }
+  .enroll-amount .enroll-input {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    width: 130px;
+    padding-left: .35rem;
+    font-family: 'JetBrains Mono', monospace;
+    min-height: 0;
+  }
+  .enroll-amount.sm .enroll-input { width: 100px; }
+  /* hide number spinner */
+  .enroll-input[type=number]::-webkit-inner-spin-button,
+  .enroll-input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+  .enroll-input[type=number] { -moz-appearance: textfield; }
+
+  @media (max-width: 540px) {
+    .enroll-form { grid-template-columns: 1fr; }
+    .enroll-amount .enroll-input { width: 100%; }
+  }
+
+  /* Filas de participantes: bloqueada vs admin */
+  .player-locked {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .6rem;
+    min-width: 0;
+    padding: .4rem .1rem;
+  }
+  .player-name-text {
+    font-weight: 600;
+    font-size: .95rem;
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .player-amount-text {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--neon);
+    background: rgba(0,200,83,.1);
+    border: 1px solid rgba(0,200,83,.25);
+    border-radius: 100px;
+    padding: .2rem .6rem;
+    flex-shrink: 0;
+  }
+  .player-lock { width: 32px; text-align: center; font-size: .9rem; opacity: .5; }
+  .player-edit {
+    display: flex;
+    gap: .4rem;
+    align-items: center;
+    min-width: 0;
+  }
+  .player-edit .player-input {
+    flex: 1;
+    min-width: 0;
+    background: transparent;
+    border: none;
+    color: var(--ink);
+    font-family: 'Manrope', sans-serif;
+    font-size: .94rem;
+    font-weight: 500;
+    padding: .55rem 0;
+    outline: none;
+  }
+  .players-empty {
+    text-align: center;
+    color: var(--muted);
+    font-size: .86rem;
+    padding: 1.4rem 1rem;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius-sm);
+    font-style: italic;
+  }
+
+  /* Pozo (pestaña jugadores) */
+  .pot-callout {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+    padding: .8rem 1rem;
+    background: linear-gradient(135deg, var(--grass-deep), transparent 80%), var(--bg-soft);
+    border: 1px solid rgba(0,200,83,.25);
+    border-radius: var(--radius-sm);
+  }
+  .pot-callout:empty { display: none; }
+  .pot-label { font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted-2); }
+  .pot-value { font-family: 'Anton', sans-serif; font-size: 1.5rem; color: var(--neon); letter-spacing: .02em; }
+  .pot-meta { margin-left: auto; font-family: 'JetBrains Mono', monospace; font-size: .72rem; color: var(--muted); }
+
+  /* Modo administrador activo */
+  .btn.admin-on {
+    background: rgba(0,200,83,.16);
+    border-color: var(--grass);
+    color: var(--neon);
+  }
+
+  /* Pozo (pestaña tabla) */
+  .pot-banner {
+    background: linear-gradient(135deg, var(--grass-deep) 0%, transparent 70%), var(--bg-soft);
+    border: 1px solid rgba(0,200,83,.3);
+    border-radius: var(--radius);
+    padding: 1.1rem 1.3rem;
+    margin-bottom: 1rem;
+  }
+  .pot-banner-top { display: flex; align-items: baseline; justify-content: space-between; gap: .6rem; flex-wrap: wrap; }
+  .pot-banner-label { font-size: .72rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted-2); }
+  .pot-banner-value { font-family: 'Anton', sans-serif; font-size: 2rem; color: var(--neon); letter-spacing: .02em; }
+  .pot-banner-split { margin-top: .35rem; font-family: 'JetBrains Mono', monospace; font-size: .7rem; color: var(--muted); }
+
+  /* Premio en el podio */
+  .podium-prize {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 1.05rem;
+    margin-top: .3rem;
+  }
+  .podium-card.p-gold   .podium-prize { color: var(--gold); }
+  .podium-card.p-silver .podium-prize { color: #d4d8dc; }
+  .podium-card.p-bronze .podium-prize { color: var(--copper); }
+  .podium-prize-label {
+    font-size: .58rem;
+    font-weight: 700;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
   /* ═════════ BUTTONS ═════════ */
   .btn {
     background: var(--bg-soft);
@@ -1469,15 +1640,33 @@
 <section id="tab-jugadores" class="section active">
   <div class="card">
     <div class="card-title"><span class="ic-lg">👥</span> Participantes</div>
-    <div class="card-subtitle">Agrega a todos los amigos que quieran jugar. Mínimo 2 jugadores, sin límite máximo.</div>
+    <div class="card-subtitle">Inscríbete con tu nombre y tu monto de apuesta — mínimo <strong style="color:var(--neon)">$10.000</strong>, sin tope. Una vez inscrito quedas fijo: solo el administrador puede eliminarte.</div>
+
+    <div class="enroll-form">
+      <input class="enroll-input enroll-name" id="enroll-name" type="text"
+             placeholder="Nombre del participante" maxlength="22"
+             onkeydown="if(event.key==='Enter')inscribePlayer()">
+      <div class="enroll-amount">
+        <span class="enroll-prefix">$</span>
+        <input class="enroll-input" id="enroll-amount" type="number"
+               inputmode="numeric" min="10000" step="1000" placeholder="10.000"
+               onkeydown="if(event.key==='Enter')inscribePlayer()">
+      </div>
+      <button class="btn btn-primary enroll-btn" onclick="inscribePlayer()">+ Inscribir</button>
+    </div>
+
     <div class="players-list" id="players-list"></div>
-    <button class="add-player-btn" onclick="addPlayer()">+ Agregar jugador</button>
+    <div class="pot-callout" id="pot-callout"></div>
   </div>
 
   <div class="action-bar">
     <button class="btn btn-primary" onclick="showTab('grupos')">Comenzar apuestas →</button>
+    <button class="btn btn-secondary admin-toggle" id="admin-toggle" onclick="toggleAdmin()">🔒 Modo administrador</button>
     <button class="btn btn-secondary" onclick="manualBackup()">💾 Guardar backup</button>
-    <button class="btn btn-secondary" onclick="resetAll()">↻ Reiniciar todo</button>
+    <span id="admin-tools" style="display:none;gap:.55rem;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-secondary" onclick="changeAdminPin()">🔑 Cambiar PIN</button>
+      <button class="btn btn-secondary" onclick="resetAll()">↻ Reiniciar todo</button>
+    </span>
     <span class="meta-row">💾 <span class="count">Guardado automático</span></span>
   </div>
 
@@ -1492,6 +1681,20 @@
       <div class="rule-pill"><div class="phase-name">Semifinales</div><div class="phase-pts">12<span>pts</span></div></div>
       <div class="rule-pill"><div class="phase-name">Tercer lugar</div><div class="phase-pts">14<span>pts</span></div></div>
       <div class="rule-pill"><div class="phase-name">Final</div><div class="phase-pts">20<span>pts</span></div></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title"><span class="ic-lg">💰</span> Premios del pozo</div>
+    <div class="card-subtitle">El <strong style="color:var(--neon)">pozo</strong> es la suma de todos los montos apostados. Al terminar el Mundial se reparte entre los 3 primeros de la Tabla General.</div>
+    <div class="rules-grid">
+      <div class="rule-pill"><div class="phase-name">🥇 1° Lugar</div><div class="phase-pts">70<span>%</span></div></div>
+      <div class="rule-pill"><div class="phase-name">🥈 2° Lugar</div><div class="phase-pts">20<span>%</span></div></div>
+      <div class="rule-pill"><div class="phase-name">🥉 3° Lugar</div><div class="phase-pts">10<span>%</span></div></div>
+    </div>
+    <div style="margin-top:.85rem;font-size:.82rem;color:var(--muted-2);line-height:1.5;">
+      <p>⚖️ El premio es <strong style="color:var(--ink)">ponderado por el monto apostado</strong>: tu parte se calcula como <em>% de tu posición × lo que apostaste</em>. Así, quien apuesta más y entra al podio se lleva proporcionalmente más.</p>
+      <p style="margin-top:.4rem;">📊 El cálculo del pozo y los premios proyectados se ven en la pestaña <strong style="color:var(--neon)">Tabla</strong>.</p>
     </div>
   </div>
 
@@ -1655,10 +1858,12 @@ const SECURITY = Object.freeze({
   validateState(obj) {
     if (!obj || typeof obj !== 'object') return false;
     if (!Array.isArray(obj.players))     return false;
-    if (obj.players.length < 1 || obj.players.length > this.MAX_PLAYERS) return false;
+    if (obj.players.length > this.MAX_PLAYERS) return false;
     for (const p of obj.players) {
       if (!p || typeof p.id !== 'string' || typeof p.name !== 'string') return false;
       if (p.id.length > 20) return false;
+      // amount es opcional para compatibilidad con estados antiguos; si viene, debe ser numérico
+      if (p.amount !== undefined && typeof p.amount !== 'number') return false;
     }
     // Validate pred/result dicts are plain objects
     for (const key of ['groupPreds','groupResults','koPreds','koResults']) {
@@ -1852,17 +2057,40 @@ const ALL_TEAMS = Object.keys(FLAG_CODES).sort();
 // ═════════════════ STATE ═════════════════
 const KEY        = 'mw26_v4';
 const KEY_BACKUP = 'mw26_backups'; // stores array of {ts, label, data}
+const KEY_ADMIN  = 'mw26_admin';   // stores { hash } of the admin PIN
 const MAX_BACKUPS = 5;
+
+// ── Apuestas: montos y premios ──────────────────────────────────
+const MIN_BET    = 10_000;                 // monto mínimo de inscripción (CLP)
+const MAX_BET    = 100_000_000;            // tope de seguridad (no es límite real de juego)
+const PRIZE_SPLIT = [0.70, 0.20, 0.10];    // reparto por posición: 1°, 2°, 3°
+
+// Formato moneda chilena: $10.000 (sin decimales)
+const CLP = new Intl.NumberFormat('es-CL', {
+  style: 'currency', currency: 'CLP', maximumFractionDigits: 0,
+});
+function fmtCLP(n) {
+  const v = Number(n);
+  return CLP.format(Number.isFinite(v) ? Math.round(v) : 0);
+}
 
 function uid() { return Math.random().toString(36).slice(2, 9); }
 
 const defaultState = () => ({
-  players: [{ id: uid(), name: '' }, { id: uid(), name: '' }],
+  players: [],            // { id, name, amount }  — se inscriben con monto
   groupPreds: {},
   groupResults: {},
   koPreds: {},
   koResults: {},
 });
+
+// Normaliza el monto de un jugador a un entero válido (>= MIN_BET)
+function normalizeAmount(raw) {
+  let n = Math.round(Number(raw));
+  if (!Number.isFinite(n) || n < MIN_BET) n = MIN_BET;
+  if (n > MAX_BET) n = MAX_BET;
+  return n;
+}
 
 function loadState() {
   try {
@@ -1873,10 +2101,11 @@ function loadState() {
       console.warn('Invalid state shape in localStorage, resetting');
       return defaultState();
     }
-    // Sanitize player names on load
+    // Sanitize player names + normalize bet amounts on load
     parsed.players = parsed.players.map(p => ({
       ...p,
       name: SECURITY.sanitizeName(p.name),
+      amount: normalizeAmount(p.amount),
     }));
     return Object.assign(defaultState(), parsed);
   } catch {
@@ -1933,7 +2162,12 @@ function restoreBackup(ts) {
 
   try {
     const restored = JSON.parse(bk.data);
-    if (!Array.isArray(restored.players) || restored.players.length < 2) throw new Error('Invalid');
+    if (!Array.isArray(restored.players)) throw new Error('Invalid');
+    restored.players = restored.players.map(p => ({
+      ...p,
+      name: SECURITY.sanitizeName(p.name),
+      amount: normalizeAmount(p.amount),
+    }));
     state = Object.assign(defaultState(), restored);
     saveState();
     renderPlayers();
@@ -1997,6 +2231,108 @@ function renderBackupList() {
 }
 
 let state = loadState();
+
+// ═════════════════ ADMINISTRADOR (PIN) ═════════════════
+// Protección suave del lado del cliente: evita borrados accidentales y por
+// personas sin el PIN. No es seguridad criptográfica (todo corre en el navegador).
+let isAdmin = false;
+
+function adminHash(str) {
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) h = (((h << 5) + h) ^ str.charCodeAt(i)) >>> 0;
+  return h.toString(36);
+}
+function loadAdmin() {
+  try { return JSON.parse(localStorage.getItem(KEY_ADMIN) || 'null'); }
+  catch { return null; }
+}
+function hasAdminPin() { const a = loadAdmin(); return !!(a && a.hash); }
+function setAdminPin(pin) {
+  try { localStorage.setItem(KEY_ADMIN, JSON.stringify({ hash: adminHash(pin) })); }
+  catch (e) { console.warn('No se pudo guardar el PIN', e); }
+}
+function verifyPin(pin) { const a = loadAdmin(); return !!(a && a.hash === adminHash(pin)); }
+
+function refreshAdminUI() {
+  renderPlayers();
+  renderTabla();
+  const btn = document.getElementById('admin-toggle');
+  if (btn) {
+    btn.textContent = isAdmin ? '🔓 Administrador: ON' : '🔒 Modo administrador';
+    btn.classList.toggle('admin-on', isAdmin);
+  }
+  const tools = document.getElementById('admin-tools');
+  if (tools) tools.style.display = isAdmin ? 'flex' : 'none';
+}
+
+function toggleAdmin() {
+  if (isAdmin) {
+    isAdmin = false;
+    refreshAdminUI();
+    showToast('🔒 Modo administrador desactivado');
+    return;
+  }
+  if (!hasAdminPin()) {
+    const p1 = (prompt('No hay PIN de administrador todavía.\nCrea un PIN (mínimo 4 caracteres) para poder borrar participantes:', '') ?? '').trim();
+    if (!p1) return;
+    if (p1.length < 4) { showToast('⚠️ El PIN debe tener al menos 4 caracteres'); return; }
+    const p2 = (prompt('Repite el PIN para confirmar:', '') ?? '').trim();
+    if (p1 !== p2) { showToast('⚠️ Los PIN no coinciden'); return; }
+    setAdminPin(p1);
+    isAdmin = true;
+    refreshAdminUI();
+    showToast('✅ PIN creado — modo administrador activo');
+    return;
+  }
+  const pin = (prompt('Ingresa el PIN de administrador:', '') ?? '').trim();
+  if (!pin) return;
+  if (verifyPin(pin)) {
+    isAdmin = true;
+    refreshAdminUI();
+    showToast('🔓 Modo administrador activo');
+  } else {
+    showToast('❌ PIN incorrecto');
+  }
+}
+
+function changeAdminPin() {
+  if (!isAdmin) { showToast('🔒 Activa el modo administrador primero'); return; }
+  const p1 = (prompt('Nuevo PIN (mínimo 4 caracteres):', '') ?? '').trim();
+  if (!p1) return;
+  if (p1.length < 4) { showToast('⚠️ Mínimo 4 caracteres'); return; }
+  const p2 = (prompt('Repite el nuevo PIN:', '') ?? '').trim();
+  if (p1 !== p2) { showToast('⚠️ Los PIN no coinciden'); return; }
+  setAdminPin(p1);
+  showToast('✅ PIN de administrador actualizado');
+}
+
+// ═════════════════ PREMIOS (pozo + reparto ponderado) ═════════════════
+function computePot() {
+  return state.players.reduce((s, p) => s + normalizeAmount(p.amount), 0);
+}
+
+// Reparte el pozo entre el podio: peso_i = %posición(70/20/10) × monto apostado_i.
+// Devuelve un array de premios (CLP) alineado al podio (índice 0 = 1° lugar).
+function computePrizes(podiumAmounts, pot) {
+  const n = Math.min(PRIZE_SPLIT.length, podiumAmounts.length);
+  const weights = [];
+  let sumW = 0;
+  for (let i = 0; i < n; i++) {
+    const w = PRIZE_SPLIT[i] * normalizeAmount(podiumAmounts[i]);
+    weights.push(w);
+    sumW += w;
+  }
+  const prizes = new Array(n).fill(0);
+  if (sumW > 0 && pot > 0) {
+    let acc = 0;
+    for (let i = 0; i < n; i++) {
+      prizes[i] = Math.floor((weights[i] / sumW) * pot);
+      acc += prizes[i];
+    }
+    prizes[0] += pot - acc; // el resto del redondeo va al líder
+  }
+  return prizes;
+}
 
 
 
@@ -2147,61 +2483,125 @@ document.querySelectorAll('.tab').forEach(t => {
 function renderPlayers() {
   const list = document.getElementById('players-list');
   list.innerHTML = '';
+
+  if (state.players.length === 0) {
+    list.innerHTML = `<div class="players-empty">Aún no hay participantes. Usa el formulario de arriba para inscribir al primero. 👆</div>`;
+  }
+
   state.players.forEach((p, i) => {
     const row = document.createElement('div');
-    row.className = 'player-row';
-    row.innerHTML = `
-      <div class="player-rank">#${i + 1}</div>
-      <input class="player-input" type="text"
-             placeholder="Nombre del jugador ${i + 1}"
-             value="${escapeHTML(p.name)}" maxlength="22"
-             data-pid="${p.id}">
-      ${state.players.length > 2
-        ? `<button class="btn-icon" data-remove="${p.id}" title="Quitar">×</button>`
-        : '<div style="width:32px"></div>'}
-    `;
+    const amount = normalizeAmount(p.amount);
+
+    if (isAdmin) {
+      row.className = 'player-row admin';
+      row.innerHTML = `
+        <div class="player-rank">#${i + 1}</div>
+        <div class="player-edit">
+          <input class="player-input" type="text" placeholder="Nombre"
+                 value="${escapeHTML(p.name)}" maxlength="22" data-pid="${p.id}">
+          <div class="enroll-amount sm">
+            <span class="enroll-prefix">$</span>
+            <input class="player-amount-input" type="number" inputmode="numeric"
+                   min="10000" step="1000" value="${amount}" data-amt="${p.id}">
+          </div>
+        </div>
+        <button class="btn-icon" data-remove="${p.id}" title="Eliminar participante">×</button>
+      `;
+    } else {
+      row.className = 'player-row locked';
+      row.innerHTML = `
+        <div class="player-rank">#${i + 1}</div>
+        <div class="player-locked">
+          <span class="player-name-text">${escapeHTML(getPlayerLabel(p, i))}</span>
+          <span class="player-amount-text">${fmtCLP(amount)}</span>
+        </div>
+        <div class="player-lock" title="Inscrito — solo el administrador puede eliminar">🔒</div>
+      `;
+    }
     list.appendChild(row);
   });
 
-  list.querySelectorAll('.player-input').forEach(input => {
-    input.addEventListener('input', e => {
-      const pid = e.target.dataset.pid;
-      const player = state.players.find(p => p.id === pid);
-      if (player) {
-        player.name = SECURITY.sanitizeName(e.target.value);
-        saveState();
-      }
+  if (isAdmin) {
+    list.querySelectorAll('.player-input').forEach(input => {
+      input.addEventListener('input', e => {
+        const player = state.players.find(p => p.id === e.target.dataset.pid);
+        if (player) { player.name = SECURITY.sanitizeName(e.target.value); saveState(); }
+      });
     });
-  });
+    list.querySelectorAll('.player-amount-input').forEach(input => {
+      input.addEventListener('change', e => {
+        const player = state.players.find(p => p.id === e.target.dataset.amt);
+        if (player) {
+          player.amount = normalizeAmount(e.target.value);
+          e.target.value = player.amount;
+          saveState();
+          renderPotCallout();
+          showToast('💰 Monto actualizado');
+        }
+      });
+    });
+    list.querySelectorAll('[data-remove]').forEach(btn => {
+      btn.addEventListener('click', () => removePlayer(btn.dataset.remove));
+    });
+  }
 
-  list.querySelectorAll('[data-remove]').forEach(btn => {
-    btn.addEventListener('click', () => removePlayer(btn.dataset.remove));
-  });
-
+  renderPotCallout();
   updatePlayerCountBadge();
 }
 
-function addPlayer() {
+function renderPotCallout() {
+  const el = document.getElementById('pot-callout');
+  if (!el) return;
+  const n = state.players.length;
+  if (n === 0) { el.innerHTML = ''; return; }
+  const pot = computePot();
+  el.innerHTML = `
+    <span class="pot-label">💰 Pozo total</span>
+    <span class="pot-value">${fmtCLP(pot)}</span>
+    <span class="pot-meta">${n} participante${n === 1 ? '' : 's'}</span>
+  `;
+}
+
+function inscribePlayer() {
+  const nameEl = document.getElementById('enroll-name');
+  const amtEl  = document.getElementById('enroll-amount');
+  if (!nameEl || !amtEl) return;
+
+  const name = SECURITY.sanitizeName(nameEl.value);
+  if (!name) { showToast('⚠️ Escribe el nombre del participante'); nameEl.focus(); return; }
   if (state.players.length >= SECURITY.MAX_PLAYERS) {
-    showToast(`⚠️ Máximo ${SECURITY.MAX_PLAYERS} jugadores`);
+    showToast(`⚠️ Máximo ${SECURITY.MAX_PLAYERS} participantes`);
     return;
   }
-  state.players.push({ id: uid(), name: '' });
+
+  const raw = amtEl.value.trim();
+  const rawAmt = Math.round(Number(raw));
+  if (raw !== '' && (!Number.isFinite(rawAmt) || rawAmt < MIN_BET)) {
+    showToast(`⚠️ El monto mínimo es ${fmtCLP(MIN_BET)}`);
+    amtEl.focus();
+    return;
+  }
+  const amount = normalizeAmount(raw === '' ? MIN_BET : rawAmt);
+
+  state.players.push({ id: uid(), name, amount });
   saveState();
   renderPlayers();
-  setTimeout(() => {
-    const inputs = document.querySelectorAll('.player-input');
-    if (inputs.length) inputs[inputs.length - 1].focus();
-  }, 30);
-  showToast('✅ Jugador agregado');
+  renderTabla();
+  nameEl.value = '';
+  amtEl.value = '';
+  nameEl.focus();
+  showToast(`✅ ${name} inscrito — ${fmtCLP(amount)}`);
 }
 
 function removePlayer(playerId) {
-  if (state.players.length <= 2) {
-    showToast('⚠️ Mínimo 2 jugadores');
+  if (!isAdmin) {
+    showToast('🔒 Solo el administrador puede eliminar participantes');
     return;
   }
-  if (!confirm('¿Quitar este jugador y todas sus predicciones?')) return;
+  const player = state.players.find(p => p.id === playerId);
+  const label = player ? getPlayerLabel(player, state.players.indexOf(player)) : 'este participante';
+  if (!confirm(`¿Eliminar a "${label}" y todas sus predicciones?\nSe guardará un backup automático antes.`)) return;
+  createBackup('Antes de eliminar participante');
   state.players = state.players.filter(p => p.id !== playerId);
   Object.keys(state.groupPreds).forEach(mid => {
     if (state.groupPreds[mid]) delete state.groupPreds[mid][playerId];
@@ -2211,7 +2611,9 @@ function removePlayer(playerId) {
   });
   saveState();
   renderPlayers();
-  showToast('🗑 Jugador eliminado');
+  renderTabla();
+  renderBackupList();
+  showToast('🗑 Participante eliminado');
 }
 
 function manualBackup() {
@@ -2930,7 +3332,7 @@ function setKOResult(matchId, val, t1, t2, phase, dateISO, venue) {
 // ═════════════════ TABLA ═════════════════
 function calcPoints() {
   const result = state.players.map((p, i) => ({
-    id: p.id, name: getPlayerLabel(p, i),
+    id: p.id, name: getPlayerLabel(p, i), amount: normalizeAmount(p.amount),
     g: 0, r32: 0, r16: 0, qf: 0, sf: 0, fin: 0, total: 0
   }));
   const idx = {};
@@ -3001,6 +3403,10 @@ function renderTabla() {
   const top3 = ranked.slice(0, Math.min(3, ranked.length));
   const rest = ranked.slice(3);
 
+  // ── PREMIOS (pozo repartido, ponderado por monto) ──
+  const pot     = computePot();
+  const prizes  = computePrizes(top3.map(r => r.amount), pot);
+
   const podiumHTML = top3.length < 2 ? '' : `
     <div class="podium">
       ${top3.map((r, i) => `
@@ -3010,6 +3416,8 @@ function renderTabla() {
           <div class="podium-name">${escapeHTML(r.name)}</div>
           <div class="podium-pts">${r.total}</div>
           <div class="podium-pts-label">puntos</div>
+          <div class="podium-prize">${fmtCLP(prizes[i] || 0)}</div>
+          <div class="podium-prize-label">premio · apostó ${fmtCLP(r.amount)}</div>
           <div class="podium-breakdown">${breakdownHTML(r)}</div>
         </div>
       `).join('')}
@@ -3025,7 +3433,7 @@ function renderTabla() {
             <div class="rank">${i + 4}°</div>
             <div class="lb-info">
               <div class="lb-name">${escapeHTML(r.name)}</div>
-              <div class="lb-breakdown">${breakdownHTML(r)}</div>
+              <div class="lb-breakdown">${breakdownHTML(r)} · 💰 ${fmtCLP(r.amount)}</div>
             </div>
             <div class="lb-total">${r.total}<span>pts</span></div>
           </div>
@@ -3044,12 +3452,29 @@ function renderTabla() {
     </div>
   ` : '';
 
-  container.innerHTML = hasData
-    ? leaderHTML + podiumHTML + restHTML
-    : `<div class="empty">
+  const hasPlayers = state.players.length > 0;
+  const potHTML = hasPlayers ? `
+    <div class="pot-banner">
+      <div class="pot-banner-top">
+        <span class="pot-banner-label">💰 Pozo total</span>
+        <span class="pot-banner-value">${fmtCLP(pot)}</span>
+      </div>
+      <div class="pot-banner-split">🥇 70% · 🥈 20% · 🥉 10% — ponderado por el monto apostado</div>
+    </div>
+  ` : '';
+
+  const noPointsHTML = `<div class="empty">
         <span class="icon">🎯</span>
-        <p>Aún no hay puntos. <strong>Ingresa resultados reales</strong> en Grupos y Eliminación para ver el ranking.</p>
+        <p>Aún no hay puntos. <strong>Ingresa resultados reales</strong> en Grupos y Eliminación para ver el ranking y los premios.</p>
        </div>`;
+  const noPlayersHTML = `<div class="empty">
+        <span class="icon">👥</span>
+        <p>Aún no hay participantes. <strong>Inscribe jugadores</strong> con su monto en la pestaña Jugadores.</p>
+       </div>`;
+
+  container.innerHTML = hasData
+    ? potHTML + leaderHTML + podiumHTML + restHTML
+    : (hasPlayers ? potHTML + noPointsHTML : noPlayersHTML);
 }
 
 // ═════════════════ REFRESH / NAVIGATION ═════════════════
