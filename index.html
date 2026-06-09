@@ -1780,11 +1780,11 @@
 
 <section id="tab-grupos" class="section">
   <div class="action-bar" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem">
-    <button class="btn btn-primary" id="sync-btn" onclick="syncFromAPI()">🌐 Sincronizar resultados</button>
+    <button class="btn btn-primary sync-btn" id="sync-btn" onclick="syncFromAPI()">🌐 Sincronizar resultados</button>
     <button class="btn btn-secondary" onclick="refreshResults()">🔄 Refrescar vista</button>
     <button class="btn btn-secondary" onclick="scrollToNextMatch('grupos')">⚡ Próximo</button>
   </div>
-  <div id="sync-msg" style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted-2);margin-bottom:.75rem;min-height:1.1em;padding-left:.1rem"></div>
+  <div class="sync-msg" id="sync-msg" style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted-2);margin-bottom:.75rem;min-height:1.1em;padding-left:.1rem"></div>
   <div class="progress-card">
     <div class="progress-stats">
       <span class="label">Resultados ingresados</span>
@@ -1800,10 +1800,11 @@
 
 <section id="tab-eliminacion" class="section">
   <div class="action-bar" style="margin-bottom:.6rem;flex-wrap:wrap;gap:.5rem">
-    <button class="btn btn-primary" onclick="syncFromAPI()">🌐 Sincronizar resultados</button>
+    <button class="btn btn-primary sync-btn" onclick="syncFromAPI()">🌐 Sincronizar resultados</button>
     <button class="btn btn-secondary" onclick="refreshResults()">🔄 Refrescar vista</button>
     <button class="btn btn-secondary" onclick="scrollToNextMatch('eliminacion')">⚡ Próximo</button>
   </div>
+  <div class="sync-msg" style="font-family:'JetBrains Mono',monospace;font-size:.72rem;color:var(--muted-2);margin-bottom:.75rem;min-height:1.1em;padding-left:.1rem"></div>
   <div id="ko-container"></div>
   <div class="action-bar" style="margin-top:1.2rem">
     <button class="btn btn-primary" onclick="showTab('tabla')">Ver Tabla General →</button>
@@ -1964,20 +1965,22 @@ const SECURITY = Object.freeze({
     return true;
   },
 
-  // ── Rate-limit tracker for API sync button ────────────────────────────
-  _lastSync: 0,
-  canSync() {
-    const now = Date.now();
-    if (now - this._lastSync < this.API_COOLDOWN_MS) return false;
-    this._lastSync = now;
-    return true;
-  },
-
   // ── Safe querySelector that only accepts allowlisted selectors ─────────
   safeTab(name) {
     return this.VALID_TABS.has(name) ? name : null;
   },
 });
+
+// Rate-limit tracker para el botón de sincronizar.
+// Va FUERA de SECURITY porque ese objeto está congelado (Object.freeze) y, en
+// modo estricto, mutar this._lastSync lanzaba una excepción que rompía el sync.
+let _lastSyncTime = 0;
+function canSyncNow() {
+  const now = Date.now();
+  if (now - _lastSyncTime < SECURITY.API_COOLDOWN_MS) return false;
+  _lastSyncTime = now;
+  return true;
+}
 
 // Match format: [home, away, 'YYYY-MM-DDTHH:mm', venue]
 // All times in local México time (CDT, UTC-5/UTC-6 depending on DST)
@@ -3662,17 +3665,25 @@ let syncStatus = 'idle'; // idle | loading | ok | error
 
 async function syncFromAPI(forceSync = false) {
   // Rate limit: don't allow more than one manual call per 15 seconds
-  if (!forceSync && !SECURITY.canSync()) {
+  if (!forceSync && !canSyncNow()) {
+    document.querySelectorAll('.sync-msg').forEach(m => {
+      m.textContent = '⏳ Espera unos segundos antes de volver a sincronizar…';
+      m.style.color = 'var(--amber)';
+    });
     showToast('⏳ Espera unos segundos antes de volver a sincronizar');
     return;
   }
 
-  const btn = document.getElementById('sync-btn');
-  const syncMsg = document.getElementById('sync-msg');
+  // Hay botones de sincronizar en Grupos y en Eliminación: actualizamos ambos
+  const btns = document.querySelectorAll('.sync-btn');
+  const msgs = document.querySelectorAll('.sync-msg');
+  const setBtns = (disabled, text) => btns.forEach(b => { b.disabled = disabled; b.textContent = text; });
+  const setMsg  = (text, color) => msgs.forEach(m => { m.textContent = text; m.style.color = color || 'var(--muted-2)'; });
+
   if (syncStatus === 'loading') return;
   syncStatus = 'loading';
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Sincronizando…'; }
-  if (syncMsg) syncMsg.textContent = '';
+  setBtns(true, '⏳ Sincronizando…');
+  setMsg('⏳ Conectando con la base de resultados…', 'var(--muted-2)');
 
   try {
     const res = await fetch(API_URL, {
@@ -3780,17 +3791,18 @@ async function syncFromAPI(forceSync = false) {
     syncStatus = 'ok';
     const msg = updated > 0
       ? `✅ ${updated} resultado${updated>1?'s':''} actualizado${updated>1?'s':''} · ${now}`
-      : `✅ Sin cambios nuevos · ${now}`;
-    if (syncMsg) syncMsg.textContent = msg;
-    showToast(updated > 0 ? `✅ ${updated} resultado${updated>1?'s':''} nuevo${updated>1?'s':''}` : '✅ Sin cambios');
+      : `✅ Sincronizado · aún no hay resultados nuevos · ${now}`;
+    setMsg(msg, 'var(--neon)');
+    showToast(updated > 0
+      ? `✅ ${updated} resultado${updated>1?'s':''} nuevo${updated>1?'s':''}`
+      : '✅ Sincronizado · sin novedades');
 
   } catch (e) {
     syncStatus = 'error';
-    const msg = `❌ Error: ${e.message}`;
-    if (syncMsg) syncMsg.textContent = msg;
-    showToast('❌ No se pudo conectar');
+    setMsg(`❌ No se pudo sincronizar: ${e.message}`, 'var(--red)');
+    showToast('❌ No se pudo conectar a la base de resultados');
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '🌐 Sincronizar resultados'; }
+    setBtns(false, '🌐 Sincronizar resultados');
     syncStatus = 'idle';
   }
 }
