@@ -397,23 +397,57 @@
     font-weight: 600;
   }
 
-  /* ═════════ BARRA DE IDENTIDAD ═════════ */
-  .identity-bar {
+  /* ═════════ CONTENEDOR DE ACCESO / IDENTIDAD ═════════ */
+  .identity-card {
     display: flex;
     align-items: center;
-    gap: .6rem;
+    gap: .85rem;
     flex-wrap: wrap;
-    background: linear-gradient(135deg, var(--grass-deep), transparent 80%), var(--bg-soft);
-    border: 1px solid rgba(0,200,83,.25);
-    border-radius: var(--radius-sm);
-    padding: .6rem .85rem;
-    margin-bottom: 1rem;
-    font-size: .86rem;
-    color: var(--muted-2);
+    background: linear-gradient(135deg, var(--grass-deep) 0%, transparent 70%), var(--bg-card);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: .9rem 1.1rem;
+    margin-bottom: 1.1rem;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
   }
-  .identity-bar #identity-who { flex: 1; min-width: 0; }
-  .identity-bar #identity-who strong { color: var(--neon); }
-  .identity-actions { display: flex; gap: .4rem; flex-shrink: 0; }
+  .identity-card.is-player  { border-color: rgba(0,200,83,.4); }
+  .identity-card.is-admin   { border-color: rgba(255,216,77,.45); background: linear-gradient(135deg, #2a2200 0%, transparent 70%), var(--bg-card); }
+  .identity-card.is-pending { border-color: rgba(255,170,43,.45); }
+  .identity-icon {
+    font-size: 1.7rem;
+    line-height: 1;
+    width: 46px; height: 46px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(255,255,255,.05);
+    border: 1px solid var(--line);
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .identity-info { flex: 1; min-width: 140px; }
+  .identity-title {
+    font-family: 'Manrope', sans-serif;
+    font-weight: 800;
+    font-size: 1rem;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+  .identity-card.is-admin .identity-title  { color: var(--gold); }
+  .identity-card.is-player .identity-title { color: var(--neon); }
+  .identity-card.is-pending .identity-title { color: var(--amber); }
+  .identity-sub {
+    font-size: .78rem;
+    color: var(--muted-2);
+    margin-top: .12rem;
+    line-height: 1.35;
+  }
+  .identity-sub:empty { display: none; }
+  .identity-actions { display: flex; gap: .45rem; flex-shrink: 0; flex-wrap: wrap; }
+
+  @media (max-width: 560px) {
+    .identity-actions { width: 100%; }
+    .identity-actions .btn { flex: 1; justify-content: center; }
+  }
   .player-code-chip {
     font-family: 'JetBrains Mono', monospace;
     font-size: .72rem;
@@ -1811,12 +1845,17 @@
 
 <main>
 
-<div id="identity-bar" class="identity-bar" style="display:none">
-  <span id="identity-who"></span>
-  <span class="identity-actions">
-    <button id="identity-action" class="btn btn-secondary btn-sm" onclick="openIdentityPicker()">Elegir</button>
-    <button id="identity-logout" class="btn btn-secondary btn-sm" onclick="logoutIdentity()" title="Salir de tu sesión">Salir</button>
-  </span>
+<div id="identity-bar" class="identity-card" style="display:none">
+  <div class="identity-icon" id="identity-icon">👁️</div>
+  <div class="identity-info">
+    <div class="identity-title" id="identity-title">Vista pública</div>
+    <div class="identity-sub" id="identity-sub"></div>
+  </div>
+  <div class="identity-actions">
+    <button id="identity-action" class="btn btn-primary btn-sm" onclick="openIdentityPicker()">Entrar como jugador</button>
+    <button id="identity-admin" class="btn btn-secondary btn-sm" onclick="toggleAdmin()">👑 Administrador</button>
+    <button id="identity-logout" class="btn btn-secondary btn-sm" onclick="exitSession()">Salir</button>
+  </div>
 </div>
 
 <section id="tab-jugadores" class="section active">
@@ -1847,9 +1886,9 @@
   <div class="action-bar">
     <button class="btn btn-primary" onclick="showTab('grupos')">Comenzar apuestas →</button>
     <button class="btn btn-secondary admin-toggle" id="admin-toggle" onclick="toggleAdmin()">🔒 Modo administrador</button>
-    <button class="btn btn-secondary" onclick="manualBackup()">💾 Guardar backup</button>
+    <button class="btn btn-secondary" id="backup-btn" onclick="manualBackup()">💾 Guardar backup</button>
     <span id="admin-tools" style="display:none;gap:.55rem;flex-wrap:wrap;align-items:center">
-      <button class="btn btn-secondary" onclick="changeAdminPin()">🔑 Cambiar PIN</button>
+      <button class="btn btn-secondary" id="change-pin-btn" onclick="changeAdminPin()">🔑 Cambiar PIN</button>
       <button class="btn btn-secondary" onclick="resetAll()">↻ Reiniciar todo</button>
     </span>
     <span class="meta-row">💾 <span class="count">Guardado automático</span></span>
@@ -1894,7 +1933,7 @@
     </div>
   </div>
 
-  <div class="card">
+  <div class="card" id="backups-card">
     <div class="card-title"><span class="ic-lg">💾</span> Backups</div>
     <div class="card-subtitle">Se guarda un backup automático antes de cada "Reiniciar todo". Puedes restaurar cualquiera aquí. Máximo 5.</div>
     <div id="backup-list"><div class="backup-empty">No hay backups guardados aún.</div></div>
@@ -2774,35 +2813,70 @@ async function pushPredAsAdmin(scope, matchId, playerId, value) {
 }
 
 // ── Identidad de usuario (login / logout) ──
+function exitSession() {
+  if (isAdmin) toggleAdmin();   // salir de modo admin
+  else logoutIdentity();        // salir de sesión de jugador / cancelar registro
+}
+
 function updateIdentityUI() {
   const bar = document.getElementById('identity-bar');
   if (!bar) return;
   if (!cloudOn) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
-  const who = document.getElementById('identity-who');
+
+  // En la nube, el acceso de administrador vive en este contenedor:
+  // ocultamos el botón viejo de la barra de acciones para no duplicar.
+  const oldAdminBtn = document.getElementById('admin-toggle');
+  if (oldAdminBtn) oldAdminBtn.style.display = 'none';
+  const changePinBtn = document.getElementById('change-pin-btn');
+  if (changePinBtn) changePinBtn.style.display = 'none'; // cambio de PIN no aplica en la nube
+  // Herramientas de admin solo para el admin
+  const backupBtn = document.getElementById('backup-btn');
+  if (backupBtn) backupBtn.style.display = isAdmin ? '' : 'none';
+  const backupsCard = document.getElementById('backups-card');
+  if (backupsCard) backupsCard.style.display = isAdmin ? '' : 'none';
+
+  const icon = document.getElementById('identity-icon');
+  const title = document.getElementById('identity-title');
+  const sub = document.getElementById('identity-sub');
   const actionBtn = document.getElementById('identity-action');
+  const adminBtn = document.getElementById('identity-admin');
   const logoutBtn = document.getElementById('identity-logout');
   const meP = myPlayer();
 
+  bar.classList.remove('is-admin', 'is-player', 'is-pending', 'is-public');
+
   if (isAdmin) {
-    who.innerHTML = `👑 <strong>Administrador</strong>`;
+    bar.classList.add('is-admin');
+    icon.textContent = '👑';
+    title.textContent = 'Modo administrador';
+    sub.textContent = 'Apruebas registros, ajustas montos y cargas los resultados.';
     actionBtn.style.display = 'none';
-    logoutBtn.style.display = 'none';
+    adminBtn.style.display = 'none';
+    logoutBtn.style.display = ''; logoutBtn.textContent = 'Salir';
   } else if (meP && !isApproved(meP)) {
-    who.innerHTML = `⏳ <strong>${escapeHTML(meP.name)}</strong> — pendiente de aprobación`;
+    bar.classList.add('is-pending');
+    icon.textContent = '⏳';
+    title.textContent = `${meP.name} — pendiente`;
+    sub.textContent = 'El administrador debe aprobar tu registro para que puedas apostar.';
     actionBtn.style.display = 'none';
-    logoutBtn.textContent = 'Cancelar';
-    logoutBtn.style.display = '';
+    adminBtn.style.display = 'none';
+    logoutBtn.style.display = ''; logoutBtn.textContent = 'Cancelar';
   } else if (meP) {
-    who.innerHTML = `👤 Juegas como <strong>${escapeHTML(meP.name)}</strong>`;
-    actionBtn.textContent = 'Cambiar';
-    actionBtn.style.display = '';
-    logoutBtn.textContent = 'Salir';
-    logoutBtn.style.display = '';
+    bar.classList.add('is-player');
+    icon.textContent = '👤';
+    title.textContent = `Juegas como ${meP.name}`;
+    sub.textContent = 'Haz tus apuestas en Grupos y Eliminación. Solo tú ves tus picks hasta que empieza cada partido.';
+    actionBtn.style.display = ''; actionBtn.textContent = 'Cambiar jugador';
+    adminBtn.style.display = 'none';
+    logoutBtn.style.display = ''; logoutBtn.textContent = 'Salir';
   } else {
-    who.innerHTML = `👋 ¿Ya estás registrado?`;
-    actionBtn.textContent = 'Entrar';
-    actionBtn.style.display = '';
+    bar.classList.add('is-public');
+    icon.textContent = '👁️';
+    title.textContent = 'Vista pública';
+    sub.textContent = 'Mira los partidos, la tabla y las apuestas que se revelan al empezar cada partido. Inicia sesión para participar.';
+    actionBtn.style.display = ''; actionBtn.textContent = 'Entrar como jugador';
+    adminBtn.style.display = '';
     logoutBtn.style.display = 'none';
   }
 }
