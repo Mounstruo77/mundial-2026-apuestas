@@ -1,3 +1,8 @@
 .DS_Store
 Thumbs.db
 *.bak
+
+# Datos en tiempo de ejecución del backend (no versionar)
+data/
+mw26_data/
+state.json

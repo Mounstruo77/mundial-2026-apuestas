@@ -11,7 +11,7 @@
   style-src 'unsafe-inline' https://fonts.googleapis.com;
   font-src https://fonts.gstatic.com;
   img-src https://flagcdn.com data:;
-  connect-src https://raw.githubusercontent.com;
+  connect-src 'self' https://raw.githubusercontent.com;
   base-uri 'none';
   form-action 'none';
   object-src 'none';
@@ -395,6 +395,46 @@
     font-family: 'JetBrains Mono', monospace;
     color: var(--neon);
     font-weight: 600;
+  }
+
+  /* ═════════ BARRA DE IDENTIDAD ═════════ */
+  .identity-bar {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex-wrap: wrap;
+    background: linear-gradient(135deg, var(--grass-deep), transparent 80%), var(--bg-soft);
+    border: 1px solid rgba(0,200,83,.25);
+    border-radius: var(--radius-sm);
+    padding: .6rem .85rem;
+    margin-bottom: 1rem;
+    font-size: .86rem;
+    color: var(--muted-2);
+  }
+  .identity-bar #identity-who { flex: 1; min-width: 0; }
+  .identity-bar #identity-who strong { color: var(--neon); }
+  .identity-actions { display: flex; gap: .4rem; flex-shrink: 0; }
+  .player-code-chip {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--gold);
+    background: rgba(255,216,77,.1);
+    border: 1px solid rgba(255,216,77,.3);
+    border-radius: 100px;
+    padding: .15rem .5rem;
+    flex-shrink: 0;
+  }
+  .player-me-tag {
+    font-size: .62rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--bg-deep);
+    background: var(--neon);
+    border-radius: 100px;
+    padding: .12rem .45rem;
+    flex-shrink: 0;
   }
 
   /* ═════════ INSCRIPCIÓN + MONTOS ═════════ */
@@ -1699,6 +1739,14 @@
 
 <main>
 
+<div id="identity-bar" class="identity-bar" style="display:none">
+  <span id="identity-who"></span>
+  <span class="identity-actions">
+    <button id="identity-action" class="btn btn-secondary btn-sm" onclick="openIdentityPicker()">Elegir</button>
+    <button id="identity-logout" class="btn btn-secondary btn-sm" onclick="logoutIdentity()" title="Salir de tu sesión">Salir</button>
+  </span>
+</div>
+
 <section id="tab-jugadores" class="section active">
   <div class="card">
     <div class="card-title"><span class="ic-lg">👥</span> Participantes</div>
@@ -2344,9 +2392,51 @@ function refreshAdminUI() {
   }
   const tools = document.getElementById('admin-tools');
   if (tools) tools.style.display = isAdmin ? 'flex' : 'none';
+  updateIdentityUI();
 }
 
 async function toggleAdmin() {
+  // Sin servidor: comportamiento original (PIN guardado en este equipo)
+  if (!cloudOn) return toggleAdminLocal();
+
+  if (isAdmin) {
+    isAdmin = false; adminPin = '';
+    refreshAdminUI(); updateIdentityUI();
+    showToast('🔒 Modo administrador desactivado');
+    return;
+  }
+  if (!serverHasAdmin) {
+    const r1 = await askPin('Crear PIN admin', 'Aún no hay administrador. Crea un PIN (mínimo 4) para gestionar el juego.', 'Crear');
+    if (r1 === null) return;
+    const p1 = r1.trim();
+    if (p1.length < 4) { showToast('⚠️ El PIN debe tener al menos 4 caracteres'); return; }
+    const r2 = await askPin('Confirmar PIN', 'Repite el PIN para confirmar.', 'Confirmar');
+    if (r2 === null) return;
+    if (p1 !== r2.trim()) { showToast('⚠️ Los PIN no coinciden'); return; }
+    const res = await apiPost({ op: 'claimAdmin', pin: p1 });
+    if (res && res.ok) {
+      isAdmin = true; adminPin = p1; serverHasAdmin = true; clearMe();
+      await pushAdmin();
+      refreshAdminUI(); updateIdentityUI(); renderPlayers(); renderTabla();
+      showToast('✅ Administrador creado');
+    } else {
+      showToast('❌ ' + (res && res.error === 'ya_existe' ? 'Ya existe un admin' : 'No se pudo crear'));
+    }
+    return;
+  }
+  const r = await askPin('Modo administrador', 'Ingresa el PIN de administrador.', 'Entrar');
+  if (r === null) return;
+  const res = await apiPost({ op: 'verifyAdmin', pin: r.trim() });
+  if (res && res.ok) {
+    isAdmin = true; adminPin = r.trim(); clearMe();
+    refreshAdminUI(); updateIdentityUI(); renderPlayers(); renderTabla();
+    showToast('🔓 Modo administrador activo');
+  } else {
+    showToast('❌ PIN incorrecto');
+  }
+}
+
+async function toggleAdminLocal() {
   if (isAdmin) {
     isAdmin = false;
     refreshAdminUI();
@@ -2417,6 +2507,219 @@ function computePrizes(podiumAmounts, pot) {
     prizes[0] += pot - acc; // el resto del redondeo va al líder
   }
   return prizes;
+}
+
+// ═════════════════ NUBE + IDENTIDAD (sincronización compartida) ═════════════════
+// Si existe api.php en el servidor, los datos se comparten entre todos.
+// Si no (p.ej. abriendo el archivo suelto), la app funciona en modo local como antes.
+const API = 'api.php';
+const KEY_ME    = 'mw26_me';     // { id, code } del jugador que soy
+const KEY_CODES = 'mw26_codes';  // mapa { playerId: code } — solo en el equipo del admin
+
+let cloudOn        = false;   // ¿hay backend disponible?
+let serverHasAdmin = false;   // ¿el servidor ya tiene PIN admin?
+let adminPin       = '';      // PIN admin en memoria (no se persiste)
+let myId           = null;    // jugador que soy (usuario normal)
+let myCode         = '';      // su código
+let lastUpdatedAt  = 0;       // marca para el sondeo
+let pollTimer      = null;
+let pushingAdmin   = false;
+
+function loadMe() {
+  try { const m = JSON.parse(localStorage.getItem(KEY_ME) || 'null'); if (m) { myId = m.id; myCode = m.code || ''; } }
+  catch {}
+}
+function saveMe()  { localStorage.setItem(KEY_ME, JSON.stringify({ id: myId, code: myCode })); }
+function clearMe() { myId = null; myCode = ''; localStorage.removeItem(KEY_ME); }
+
+// Códigos en claro guardados SOLO en el equipo del admin (para compartirlos)
+function loadCodes() { try { return JSON.parse(localStorage.getItem(KEY_CODES) || '{}') || {}; } catch { return {}; } }
+function saveCodes(map) { try { localStorage.setItem(KEY_CODES, JSON.stringify(map)); } catch {} }
+function getCode(playerId) { return loadCodes()[playerId] || ''; }
+function setCode(playerId, code) { const m = loadCodes(); m[playerId] = code; saveCodes(m); }
+
+async function apiGet() {
+  const r = await fetch(API, { cache: 'no-store', credentials: 'omit' });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+async function apiPost(payload) {
+  const r = await fetch(API, {
+    method: 'POST', cache: 'no-store', credentials: 'omit',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return r.json();
+}
+
+// Copia el estado del servidor al estado local
+function applyServerState(srv) {
+  const coerce = o => (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
+  state.players      = (srv.players || []).map(p => ({
+    id: p.id, name: p.name || '', amount: normalizeAmount(p.amount), hasCode: !!p.hasCode,
+  }));
+  state.groupPreds   = coerce(srv.groupPreds);
+  state.groupResults = coerce(srv.groupResults);
+  state.koPreds      = coerce(srv.koPreds);
+  state.koResults    = coerce(srv.koResults);
+  serverHasAdmin     = !!srv.hasAdmin;
+  lastUpdatedAt      = srv.updatedAt || 0;
+}
+
+// ¿Puede esta persona editar las predicciones de "playerId"?
+function canEdit(playerId) {
+  if (!cloudOn) return true;   // modo local = como siempre
+  if (isAdmin)  return true;   // admin edita todo
+  return playerId === myId;    // usuario normal: solo lo suyo
+}
+
+// Inicializa la sincronización (se llama en init)
+async function cloudInit() {
+  try {
+    const srv = await apiGet();
+    cloudOn = true;
+    applyServerState(srv);
+    loadMe();
+    renderPlayers();
+    renderGroups();
+    if (typeof _tabRendered !== 'undefined') _tabRendered.delete('eliminacion');
+    renderKO();
+    renderTabla();
+    updateIdentityUI();
+    startPolling();
+  } catch (e) {
+    cloudOn = false;
+    console.warn('Sin backend (modo local):', e.message);
+    updateIdentityUI();
+  }
+}
+
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    if (!cloudOn || document.hidden || pushingAdmin) return;
+    try {
+      const srv = await apiGet();
+      if ((srv.updatedAt || 0) === lastUpdatedAt) return;  // nada nuevo
+      // No pisar mientras el admin escribe en un campo
+      const ae = document.activeElement;
+      const editing = ae && (ae.classList?.contains('player-input') || ae.classList?.contains('player-amount-input'));
+      applyServerState(srv);
+      const tab = document.querySelector('.tab.active')?.dataset.tab;
+      if (tab === 'grupos') renderGroups();
+      else if (tab === 'eliminacion') refreshAllKOCards();
+      else if (tab === 'tabla') renderTabla();
+      if (!editing) renderPlayers();
+    } catch {}
+  }, 4000);
+}
+
+// Empuja al servidor los datos que maneja el admin (jugadores/montos/códigos/resultados)
+async function pushAdmin() {
+  if (!cloudOn || !isAdmin) return false;
+  pushingAdmin = true;
+  try {
+    const codes = loadCodes();
+    const players = state.players.map(p => ({
+      id: p.id, name: p.name, amount: normalizeAmount(p.amount),
+      code: p._newCode || '',  // solo se envía cuando hay código nuevo; si no, el server conserva el anterior
+    }));
+    const r = await apiPost({ op: 'admin', pin: adminPin, players, groupResults: state.groupResults, koResults: state.koResults });
+    if (r && r.ok && r.state) { applyServerState(r.state); }
+    else if (r && !r.ok) { showToast('❌ Error al guardar en el servidor'); return false; }
+    return true;
+  } catch (e) { showToast('❌ Sin conexión con el servidor'); return false; }
+  finally { pushingAdmin = false; }
+}
+
+// Empuja una predicción del usuario actual
+async function pushPred(scope, matchId, playerId, value) {
+  if (!cloudOn) return;
+  const code = isAdmin ? '' : myCode;
+  try {
+    const r = await apiPost({ op: 'pred', playerId, code, scope, matchId, value });
+    if (r && r.ok) { lastUpdatedAt = r.updatedAt || lastUpdatedAt; }
+    else { showToast('❌ No se pudo guardar tu apuesta'); }
+  } catch { showToast('❌ Sin conexión con el servidor'); }
+}
+
+// Admin push de predicción ajena (cuando el admin edita en su pantalla)
+async function pushPredAsAdmin(scope, matchId, playerId, value) {
+  // El admin escribe predicciones vía 'admin'? No: usamos el endpoint pred sin código,
+  // pero el server exige código si el jugador lo tiene. Para que el admin pueda, lo
+  // tratamos como el propio jugador usando el código guardado localmente (si existe).
+  const code = getCode(playerId);
+  try {
+    const r = await apiPost({ op: 'pred', playerId, code, scope, matchId, value });
+    if (r && r.ok) lastUpdatedAt = r.updatedAt || lastUpdatedAt;
+  } catch {}
+}
+
+// ── Identidad de usuario (login / logout) ──
+function updateIdentityUI() {
+  const bar = document.getElementById('identity-bar');
+  if (!bar) return;
+  if (!cloudOn) { bar.style.display = 'none'; return; }
+  bar.style.display = 'flex';
+  const who = document.getElementById('identity-who');
+  const meP = myId ? state.players.find(p => p.id === myId) : null;
+  if (isAdmin) {
+    who.innerHTML = `👑 <strong>Administrador</strong>`;
+  } else if (meP) {
+    who.innerHTML = `👤 Estás jugando como <strong>${escapeHTML(meP.name)}</strong>`;
+  } else {
+    who.innerHTML = `👋 Aún no elegiste quién eres`;
+  }
+  const btn = document.getElementById('identity-action');
+  btn.textContent = (myId || isAdmin) ? 'Cambiar' : 'Elegir';
+}
+
+async function openIdentityPicker() {
+  if (!cloudOn) { showToast('Sin servidor: modo local'); return; }
+  if (!state.players.length) { showToast('Aún no hay participantes inscritos'); return; }
+  // Construir lista de nombres
+  const options = state.players.map(p => p.name || '(sin nombre)');
+  const choice = await showModal({
+    title: '¿Quién eres?',
+    body: 'Elige tu nombre de la lista escribiendo el número:\n\n' +
+          state.players.map((p, i) => `${i + 1}. ${p.name || '(sin nombre)'}`).join('\n'),
+    input: true, inputType: 'text', placeholder: 'Número (ej: 1)', okText: 'Siguiente',
+  });
+  if (choice === null) return;
+  const idx = parseInt(choice.trim(), 10) - 1;
+  if (!(idx >= 0 && idx < state.players.length)) { showToast('Número inválido'); return; }
+  const player = state.players[idx];
+
+  let code = '';
+  if (player.hasCode) {
+    const c = await showModal({
+      title: `Hola ${player.name}`, body: 'Ingresa tu código personal (te lo da el administrador).',
+      input: true, inputType: 'password', placeholder: 'Código', okText: 'Entrar',
+    });
+    if (c === null) return;
+    code = c.trim();
+  }
+  const r = await apiPost({ op: 'login', playerId: player.id, code });
+  if (r && r.ok) {
+    myId = player.id; myCode = code; isAdmin = false; adminPin = '';
+    saveMe();
+    updateIdentityUI();
+    renderPlayers(); renderGroups();
+    if (typeof _tabRendered !== 'undefined') _tabRendered.delete('eliminacion');
+    renderKO();
+    showToast(`✅ Entraste como ${player.name}`);
+  } else {
+    showToast('❌ Código incorrecto');
+  }
+}
+
+function logoutIdentity() {
+  clearMe();
+  updateIdentityUI();
+  renderPlayers(); renderGroups();
+  if (typeof _tabRendered !== 'undefined') _tabRendered.delete('eliminacion');
+  renderKO();
+  showToast('Saliste. Elige quién eres cuando quieras.');
 }
 
 
@@ -2628,15 +2931,21 @@ function renderPlayers() {
   const list = document.getElementById('players-list');
   list.innerHTML = '';
 
+  // El formulario de inscripción solo lo ve el admin (o en modo local)
+  const enroll = document.querySelector('.enroll-form');
+  if (enroll) enroll.style.display = (!cloudOn || isAdmin) ? 'grid' : 'none';
+
   if (state.players.length === 0) {
-    list.innerHTML = `<div class="players-empty">Aún no hay participantes. Usa el formulario de arriba para inscribir al primero. 👆</div>`;
+    list.innerHTML = `<div class="players-empty">Aún no hay participantes${(!cloudOn || isAdmin) ? '. Usa el formulario de arriba para inscribir al primero. 👆' : ' inscritos todavía.'}</div>`;
   }
 
   state.players.forEach((p, i) => {
     const row = document.createElement('div');
     const amount = normalizeAmount(p.amount);
+    const isMe = cloudOn && !isAdmin && p.id === myId;
 
     if (isAdmin) {
+      const code = cloudOn ? getCode(p.id) : '';
       row.className = 'player-row admin';
       row.innerHTML = `
         <div class="player-rank">#${i + 1}</div>
@@ -2648,6 +2957,7 @@ function renderPlayers() {
             <input class="player-amount-input" type="number" inputmode="numeric"
                    min="10000" step="1000" value="${amount}" data-amt="${p.id}">
           </div>
+          ${cloudOn ? `<span class="player-code-chip" title="Código personal para compartir">🔑 ${code ? escapeHTML(code) : (p.hasCode ? '••••' : '—')}</span>` : ''}
         </div>
         <button class="btn-icon" data-remove="${p.id}" title="Eliminar participante">×</button>
       `;
@@ -2657,6 +2967,7 @@ function renderPlayers() {
         <div class="player-rank">#${i + 1}</div>
         <div class="player-locked">
           <span class="player-name-text">${escapeHTML(getPlayerLabel(p, i))}</span>
+          ${isMe ? '<span class="player-me-tag">Tú</span>' : ''}
           <span class="player-amount-text">${fmtCLP(amount)}</span>
         </div>
         <div class="player-lock" title="Inscrito — solo el administrador puede eliminar">🔒</div>
@@ -2671,6 +2982,7 @@ function renderPlayers() {
         const player = state.players.find(p => p.id === e.target.dataset.pid);
         if (player) { player.name = SECURITY.sanitizeName(e.target.value); saveState(); }
       });
+      input.addEventListener('change', () => { if (cloudOn) pushAdmin(); });
     });
     list.querySelectorAll('.player-amount-input').forEach(input => {
       input.addEventListener('change', e => {
@@ -2680,6 +2992,7 @@ function renderPlayers() {
           e.target.value = player.amount;
           saveState();
           renderPotCallout();
+          if (cloudOn) pushAdmin();
           showToast('💰 Monto actualizado');
         }
       });
@@ -2707,6 +3020,10 @@ function renderPotCallout() {
 }
 
 function inscribePlayer() {
+  if (cloudOn && !isAdmin) {
+    showToast('🔒 Solo el administrador puede inscribir participantes');
+    return;
+  }
   const nameEl = document.getElementById('enroll-name');
   const amtEl  = document.getElementById('enroll-amount');
   if (!nameEl || !amtEl) return;
@@ -2727,14 +3044,29 @@ function inscribePlayer() {
   }
   const amount = normalizeAmount(raw === '' ? MIN_BET : rawAmt);
 
-  state.players.push({ id: uid(), name, amount });
+  const id = uid();
+  const player = { id, name, amount };
+  let code = '';
+  if (cloudOn) {
+    code = String(Math.floor(1000 + Math.random() * 9000)); // código de 4 dígitos
+    player.hasCode = true;
+    player._newCode = code;
+    setCode(id, code);
+  }
+  state.players.push(player);
   saveState();
-  renderPlayers();
-  renderTabla();
   nameEl.value = '';
   amtEl.value = '';
   nameEl.focus();
-  showToast(`✅ ${name} inscrito — ${fmtCLP(amount)}`);
+
+  if (cloudOn) {
+    pushAdmin().then(() => { renderPlayers(); renderTabla(); });
+    renderPlayers(); renderTabla();
+    showToast(`✅ ${name} inscrito · código ${code}`);
+  } else {
+    renderPlayers(); renderTabla();
+    showToast(`✅ ${name} inscrito — ${fmtCLP(amount)}`);
+  }
 }
 
 async function removePlayer(playerId) {
@@ -2754,7 +3086,9 @@ async function removePlayer(playerId) {
   Object.keys(state.koPreds).forEach(mid => {
     if (state.koPreds[mid]) delete state.koPreds[mid][playerId];
   });
+  const codes = loadCodes(); delete codes[playerId]; saveCodes(codes);
   saveState();
+  if (cloudOn) pushAdmin().then(() => { renderPlayers(); renderTabla(); });
   renderPlayers();
   renderTabla();
   renderBackupList();
@@ -2773,11 +3107,18 @@ async function manualBackup() {
 }
 
 async function resetAll() {
+  if (cloudOn && !isAdmin) { showToast('🔒 Solo el administrador puede reiniciar'); return; }
   const ok = await confirmModal('Reiniciar todo', '¿Borrar todo y empezar desde cero?\n\nSe guardará un backup automático que podrás restaurar desde la sección Backups.', 'Sí, reiniciar');
   if (!ok) return;
   createBackup('Antes de reiniciar');
-  state = defaultState();
-  saveState();
+  if (cloudOn) {
+    const r = await apiPost({ op: 'reset', pin: adminPin });
+    if (r && r.ok && r.state) { applyServerState(r.state); }
+    else { showToast('❌ No se pudo reiniciar en el servidor'); return; }
+  } else {
+    state = defaultState();
+    saveState();
+  }
   renderPlayers();
   renderGroups();
   if (typeof _tabRendered !== 'undefined') _tabRendered.delete('eliminacion');
@@ -2863,14 +3204,15 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
     const row = document.createElement('div');
     row.className = 'pred';
 
+    const picked = PRED_OPTIONS.find(o => o.v === pred);
+    const mine = canEdit(player.id);   // admin, modo local, o mi propia fila
     let controlsHTML;
     if (locked) {
-      // Show what they picked (or "sin apuesta") but no interaction
-      const picked = PRED_OPTIONS.find(o => o.v === pred);
+      // Bloqueado porque el partido ya empezó: mostrar lo apostado
       controlsHTML = `<div class="pred-locked-msg ${pred ? 'has-pred' : ''}">
         ${pred ? `🔒 ${picked ? picked.label : pred}` : '🔒 Sin apuesta'}
       </div>`;
-    } else {
+    } else if (mine) {
       controlsHTML = `<div class="pred-controls">
         ${PRED_OPTIONS.map(opt =>
           `<button class="pbtn ${pred === opt.v ? 'sel-' + opt.v : ''}"
@@ -2880,6 +3222,11 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
             <span class="pbtn-ball">${opt.icon}</span>
            </button>`
         ).join('')}
+      </div>`;
+    } else {
+      // Predicción de otra persona, aún no bloqueada: oculta para no copiar
+      controlsHTML = `<div class="pred-locked-msg ${pred ? 'has-pred' : ''}">
+        ${pred ? '✓ Ya apostó' : '· Sin apuesta'}
       </div>`;
     }
 
@@ -2896,14 +3243,14 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
   real.className = 'real-section';
 
   const finished = isFinished(dateISO);
-  if (finished) {
-    // Show result as locked display — can't modify after match ends
-    const resultLabels = { '1': home, 'X': 'Empate', '2': away };
+  const resultLabels = { '1': home, 'X': 'Empate', '2': away };
+  if (finished || (cloudOn && !isAdmin)) {
+    // Bloqueado (partido terminado) o usuario normal: solo lectura
     real.innerHTML = `
-      <div class="real-label">🔒 Resultado final</div>
+      <div class="real-label">${finished ? '🔒 Resultado final' : 'Resultado real'}</div>
       <div class="real-result-locked">
         ${result
-          ? `<span class="locked-value">${resultLabels[result] || result}</span>`
+          ? `<span class="locked-value">${escapeHTML(resultLabels[result] || result)}</span>`
           : `<span class="locked-empty">Sin resultado registrado</span>`}
       </div>`;
   } else {
@@ -2955,21 +3302,26 @@ function setGroupPred(matchId, playerId, val) {
     console.warn('Security: invalid group pred value', val);
     return;
   }
+  if (!canEdit(playerId)) { showToast('🔒 Solo puedes editar tus propias apuestas'); return; }
   if (isStarted(getGroupMatchDate(matchId))) {
     showToast('🔒 El partido ya empezó — apuesta bloqueada');
     return;
   }
   if (!state.groupPreds[matchId]) state.groupPreds[matchId] = {};
-  if (state.groupPreds[matchId][playerId] === val) {
-    delete state.groupPreds[matchId][playerId];
-  } else {
-    state.groupPreds[matchId][playerId] = val;
-  }
+  const cur = state.groupPreds[matchId][playerId] || '';
+  const finalVal = (cur === val) ? '' : val;
+  if (finalVal === '') delete state.groupPreds[matchId][playerId];
+  else state.groupPreds[matchId][playerId] = finalVal;
   saveState();
+  if (cloudOn) {
+    if (isAdmin) pushPredAsAdmin('group', matchId, playerId, finalVal);
+    else pushPred('group', matchId, playerId, finalVal);
+  }
   rebuildGroupCard(matchId);
 }
 
 function setGroupResult(matchId, val, home, away) {
+  if (cloudOn && !isAdmin) { showToast('🔒 Solo el administrador registra resultados'); return; }
   if (val && !SECURITY.isValidGroupResult(val)) {
     console.warn('Security: invalid group result value', val);
     return;
@@ -2984,6 +3336,7 @@ function setGroupResult(matchId, val, home, away) {
     state.groupResults[matchId] = val;
   }
   saveState();
+  if (cloudOn) pushAdmin();
   rebuildGroupCard(matchId, home, away);
   updateGroupsProgress();
   if (document.getElementById('ko-container').children.length > 0) {
@@ -3391,18 +3744,25 @@ function buildKOCard(matchId, t1, t2, phase, dateISO, venue) {
     nameDiv.textContent = getPlayerLabel(player, pIdx);
     row.appendChild(nameDiv);
 
+    const mine = canEdit(player.id);
     if (koLocked) {
       const locked = document.createElement('div');
       locked.className = 'pred-locked-msg' + (pred ? ' has-pred' : '');
       locked.innerHTML = pred ? `🔒 ${flag(pred)} ${escapeHTML(pred)}` : '🔒 Sin apuesta';
       row.appendChild(locked);
-    } else {
+    } else if (mine) {
       const dd = createFlagDropdown({
         placeholder: '— elige equipo —',
         value: pred,
         onChange: val => setKOPred(matchId, player.id, val),
       });
       row.appendChild(dd.el);
+    } else {
+      // Predicción de otra persona, aún no bloqueada: oculta para no copiar
+      const hidden = document.createElement('div');
+      hidden.className = 'pred-locked-msg' + (pred ? ' has-pred' : '');
+      hidden.innerHTML = pred ? '✓ Ya apostó' : '· Sin apuesta';
+      row.appendChild(hidden);
     }
 
     const ptsDiv = document.createElement('div');
@@ -3422,8 +3782,8 @@ function buildKOCard(matchId, t1, t2, phase, dateISO, venue) {
 
   const koFinished = isFinished(dateISO);
 
-  if (koFinished) {
-    realLabel.innerHTML = '🔒 Resultado final';
+  if (koFinished || (cloudOn && !isAdmin)) {
+    realLabel.innerHTML = koFinished ? '🔒 Resultado final' : 'Resultado real — ganador';
     real.appendChild(realLabel);
     const lockedDiv = document.createElement('div');
     lockedDiv.className = 'real-result-locked';
@@ -3452,6 +3812,7 @@ function setKOPred(matchId, playerId, val) {
     console.warn('Security: invalid team name in KO pred', val);
     return;
   }
+  if (!canEdit(playerId)) { showToast('🔒 Solo puedes editar tus propias apuestas'); return; }
   if (isStarted(getKOMatchDate(matchId))) {
     showToast('🔒 El partido ya empezó — apuesta bloqueada');
     return;
@@ -3460,10 +3821,15 @@ function setKOPred(matchId, playerId, val) {
   if (val) state.koPreds[matchId][playerId] = val;
   else delete state.koPreds[matchId][playerId];
   saveState();
+  if (cloudOn) {
+    if (isAdmin) pushPredAsAdmin('ko', matchId, playerId, val || '');
+    else pushPred('ko', matchId, playerId, val || '');
+  }
   if (val) showToast('✅ Predicción guardada');
 }
 
 function setKOResult(matchId, val, t1, t2, phase, dateISO, venue) {
+  if (cloudOn && !isAdmin) { showToast('🔒 Solo el administrador registra resultados'); return; }
   if (val && !SECURITY.isValidTeamName(val)) {
     console.warn('Security: invalid team name in KO result', val);
     return;
@@ -3475,6 +3841,7 @@ function setKOResult(matchId, val, t1, t2, phase, dateISO, venue) {
   if (val) state.koResults[matchId] = val;
   else delete state.koResults[matchId];
   saveState();
+  if (cloudOn) pushAdmin();
   refreshAllKOCards();
   showToast(val ? '🏆 Resultado registrado — equipos avanzados' : '↺ Resultado borrado');
 }
@@ -3934,6 +4301,9 @@ function init() {
   renderBackupList();
   updateNextMatchInfo();
   updateCountdown();
+
+  // Conectar con el backend compartido (si existe api.php)
+  cloudInit();
 
   // Auto-sync on load after a short delay (avoids blocking first paint)
   setTimeout(() => syncFromAPI(true), 1500);

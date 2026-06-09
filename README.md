@@ -48,5 +48,29 @@ El **pozo** es la suma de todos los montos apostados. Al terminar el Mundial se 
 
 El borrado de participantes está protegido con un **PIN de administrador** (se configura la primera vez desde el botón *Modo administrador* en la pestaña Jugadores). Sin el PIN solo se puede inscribir y apostar, no eliminar. Es una protección pensada para evitar borrados accidentales entre amigos.
 
+## 🌐 Modo online compartido (con servidor PHP)
+
+La app tiene **dos modos**:
+
+- **Modo local** (GitHub Pages o abrir el archivo): los datos se guardan solo en tu navegador. Sirve para llevar el control desde un único dispositivo.
+- **Modo online compartido** (en un hosting con PHP, como cPanel): **todos ven y editan lo mismo en tiempo casi real**. Requiere subir `api.php` junto a `index.html`.
+
+### Cómo funciona el modo online
+
+- `api.php` guarda el estado compartido en un archivo JSON **fuera de la carpeta web** (no accesible por URL).
+- El **administrador** (PIN) gestiona jugadores, montos y resultados.
+- Cada jugador recibe un **código personal** (lo genera la app y lo ve el admin) para entrar y editar **solo sus** predicciones.
+- Las predicciones de los demás se **ocultan hasta que el partido empieza** (para no copiar).
+- La pantalla se actualiza sola cada pocos segundos (*polling*).
+
+### Despliegue
+
+1. Sube `index.html` y `api.php` a una carpeta de tu hosting (ej. `public_html/mundial/`).
+2. Abre `https://tudominio/mundial/`.
+3. Pulsa **Modo administrador** y crea tu PIN.
+4. Inscribe a los jugadores y comparte a cada uno su **código personal**.
+
+> ⚠️ GitHub Pages **no ejecuta PHP**, así que ahí la app funciona solo en modo local. El modo compartido necesita un hosting con PHP.
+
 ---
 Hecho con ❤️ para el Mundial 2026 🏆
