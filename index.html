@@ -1514,6 +1514,68 @@
   }
   .toast.show { transform: translateX(-50%) translateY(0); }
 
+  /* ═════════ MODAL ═════════ */
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0,0,0,.72);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.2rem;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+  }
+  .modal-overlay.show { opacity: 1; pointer-events: auto; }
+  .modal {
+    background: #14201a;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    width: 100%;
+    max-width: 360px;
+    padding: 1.3rem;
+    box-shadow: 0 16px 48px rgba(0,0,0,.6);
+    transform: translateY(12px) scale(.98);
+    transition: transform .2s cubic-bezier(.34,1.56,.64,1);
+  }
+  .modal-overlay.show .modal { transform: translateY(0) scale(1); }
+  .modal-title {
+    font-family: 'Anton', sans-serif;
+    font-size: 1.3rem;
+    letter-spacing: .02em;
+    text-transform: uppercase;
+    color: var(--ink);
+    margin-bottom: .5rem;
+  }
+  .modal-body {
+    font-size: .88rem;
+    color: var(--muted-2);
+    line-height: 1.5;
+    white-space: pre-line;
+    margin-bottom: 1rem;
+  }
+  .modal-body:empty { display: none; }
+  .modal-field { margin-bottom: 1rem; }
+  .modal-field input {
+    width: 100%;
+    background: var(--bg-soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    color: var(--ink);
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 1.1rem;
+    padding: .8rem;
+    outline: none;
+    min-height: 48px;
+  }
+  .modal-field input:focus { border-color: var(--grass); box-shadow: 0 0 0 3px var(--grass-glow); }
+  .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; }
+  .modal-actions .btn { flex: 1; justify-content: center; }
+
   /* ═════════ RESPONSIVE ═════════ */
   /* ─── Global touch-target minimum ────────────────────────────── */
   .tab, .btn, .add-player-btn, .rbtn, .fdd-trigger, .real-btn {
@@ -1753,6 +1815,20 @@
 </section>
 
 </main>
+
+<div class="modal-overlay" id="modal-overlay" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-title" id="modal-title"></div>
+    <div class="modal-body" id="modal-body"></div>
+    <div class="modal-field" id="modal-field" style="display:none">
+      <input id="modal-input" type="password" inputmode="numeric" autocomplete="off" maxlength="20">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="modal-cancel" type="button">Cancelar</button>
+      <button class="btn btn-primary" id="modal-ok" type="button">Aceptar</button>
+    </div>
+  </div>
+</div>
 
 <div class="toast" id="toast"></div>
 
@@ -2217,14 +2293,16 @@ function renderBackupList() {
         <button class="btn-icon btn-sm-del" data-delete="${bk.ts}" title="Eliminar">×</button>
       </div>
     `;
-    row.querySelector('[data-restore]').addEventListener('click', () => {
-      if (confirm(`¿Restaurar el backup del ${fmt}?\nSe perderán los cambios actuales (pero se guardará un nuevo backup primero).`)) {
+    row.querySelector('[data-restore]').addEventListener('click', async () => {
+      const ok = await confirmModal('Restaurar backup', `¿Restaurar el backup del ${fmt}?\nSe perderán los cambios actuales (pero se guardará un nuevo backup primero).`, 'Sí, restaurar');
+      if (ok) {
         createBackup('Antes de restaurar');
         restoreBackup(bk.ts);
       }
     });
-    row.querySelector('[data-delete]').addEventListener('click', () => {
-      if (confirm('¿Eliminar este backup?')) deleteBackup(bk.ts);
+    row.querySelector('[data-delete]').addEventListener('click', async () => {
+      const ok = await confirmModal('Eliminar backup', '¿Eliminar este backup?', 'Sí, eliminar');
+      if (ok) deleteBackup(bk.ts);
     });
     container.appendChild(row);
   });
@@ -2265,7 +2343,7 @@ function refreshAdminUI() {
   if (tools) tools.style.display = isAdmin ? 'flex' : 'none';
 }
 
-function toggleAdmin() {
+async function toggleAdmin() {
   if (isAdmin) {
     isAdmin = false;
     refreshAdminUI();
@@ -2273,20 +2351,22 @@ function toggleAdmin() {
     return;
   }
   if (!hasAdminPin()) {
-    const p1 = (prompt('No hay PIN de administrador todavía.\nCrea un PIN (mínimo 4 caracteres) para poder borrar participantes:', '') ?? '').trim();
-    if (!p1) return;
+    const r1 = await askPin('Crear PIN', 'No hay PIN de administrador todavía. Crea uno (mínimo 4 caracteres) para poder borrar participantes.', 'Crear');
+    if (r1 === null) return;
+    const p1 = r1.trim();
     if (p1.length < 4) { showToast('⚠️ El PIN debe tener al menos 4 caracteres'); return; }
-    const p2 = (prompt('Repite el PIN para confirmar:', '') ?? '').trim();
-    if (p1 !== p2) { showToast('⚠️ Los PIN no coinciden'); return; }
+    const r2 = await askPin('Confirmar PIN', 'Repite el PIN para confirmar.', 'Confirmar');
+    if (r2 === null) return;
+    if (p1 !== r2.trim()) { showToast('⚠️ Los PIN no coinciden'); return; }
     setAdminPin(p1);
     isAdmin = true;
     refreshAdminUI();
     showToast('✅ PIN creado — modo administrador activo');
     return;
   }
-  const pin = (prompt('Ingresa el PIN de administrador:', '') ?? '').trim();
-  if (!pin) return;
-  if (verifyPin(pin)) {
+  const r = await askPin('Modo administrador', 'Ingresa el PIN para activar el modo administrador.', 'Entrar');
+  if (r === null) return;
+  if (verifyPin(r.trim())) {
     isAdmin = true;
     refreshAdminUI();
     showToast('🔓 Modo administrador activo');
@@ -2295,13 +2375,15 @@ function toggleAdmin() {
   }
 }
 
-function changeAdminPin() {
+async function changeAdminPin() {
   if (!isAdmin) { showToast('🔒 Activa el modo administrador primero'); return; }
-  const p1 = (prompt('Nuevo PIN (mínimo 4 caracteres):', '') ?? '').trim();
-  if (!p1) return;
+  const r1 = await askPin('Cambiar PIN', 'Nuevo PIN (mínimo 4 caracteres):', 'Guardar');
+  if (r1 === null) return;
+  const p1 = r1.trim();
   if (p1.length < 4) { showToast('⚠️ Mínimo 4 caracteres'); return; }
-  const p2 = (prompt('Repite el nuevo PIN:', '') ?? '').trim();
-  if (p1 !== p2) { showToast('⚠️ Los PIN no coinciden'); return; }
+  const r2 = await askPin('Confirmar PIN', 'Repite el nuevo PIN:', 'Guardar');
+  if (r2 === null) return;
+  if (p1 !== r2.trim()) { showToast('⚠️ Los PIN no coinciden'); return; }
   setAdminPin(p1);
   showToast('✅ PIN de administrador actualizado');
 }
@@ -2347,6 +2429,65 @@ function showToast(msg) {
   t.classList.add('show');
   clearTimeout(showToast._t);
   showToast._t = setTimeout(() => t.classList.remove('show'), 1900);
+}
+
+// ── Modal propio (reemplaza prompt/confirm, que algunos navegadores —
+//    sobre todo móviles— bloquean). Devuelve una promesa.
+//    Con input: resuelve el texto, o null si se cancela.
+//    Sin input: resuelve true (aceptar) o false (cancelar).
+function showModal({ title, body = '', input = false, inputType = 'password',
+                    placeholder = '', okText = 'Aceptar', cancelText = 'Cancelar' }) {
+  return new Promise(resolve => {
+    const overlay = document.getElementById('modal-overlay');
+    const field   = document.getElementById('modal-field');
+    const inp     = document.getElementById('modal-input');
+    const okBtn   = document.getElementById('modal-ok');
+    const cancelBtn = document.getElementById('modal-cancel');
+
+    document.getElementById('modal-title').textContent = title || '';
+    document.getElementById('modal-body').textContent  = body || '';
+    okBtn.textContent = okText;
+    cancelBtn.textContent = cancelText;
+
+    field.style.display = input ? 'block' : 'none';
+    if (input) {
+      inp.type = inputType;
+      inp.placeholder = placeholder;
+      inp.value = '';
+      inp.maxLength = inputType === 'password' ? 20 : 22;
+      inp.style.letterSpacing = inputType === 'password' ? '.2em' : 'normal';
+      inp.style.textAlign     = inputType === 'password' ? 'center' : 'left';
+      inp.inputMode = inputType === 'password' ? 'numeric' : 'text';
+    }
+
+    overlay.classList.add('show');
+    overlay.setAttribute('aria-hidden', 'false');
+    setTimeout(() => (input ? inp : okBtn).focus(), 60);
+
+    const done = (val) => {
+      overlay.classList.remove('show');
+      overlay.setAttribute('aria-hidden', 'true');
+      okBtn.onclick = cancelBtn.onclick = overlay.onclick = inp.onkeydown = null;
+      resolve(val);
+    };
+    okBtn.onclick     = () => done(input ? inp.value : true);
+    cancelBtn.onclick = () => done(input ? null : false);
+    overlay.onclick   = (e) => { if (e.target === overlay) done(input ? null : false); };
+    inp.onkeydown     = (e) => {
+      if (e.key === 'Enter')  { e.preventDefault(); done(input ? inp.value : true); }
+      if (e.key === 'Escape') { e.preventDefault(); done(input ? null : false); }
+    };
+  });
+}
+
+// Confirmación simple → true / false
+function confirmModal(title, body, okText = 'Sí, continuar', cancelText = 'Cancelar') {
+  return showModal({ title, body, input: false, okText, cancelText });
+}
+
+// Pedir un PIN → string o null
+function askPin(title, body, okText = 'Aceptar') {
+  return showModal({ title, body, input: true, inputType: 'password', placeholder: 'PIN', okText });
 }
 
 function escapeHTML(s) {
@@ -2593,14 +2734,15 @@ function inscribePlayer() {
   showToast(`✅ ${name} inscrito — ${fmtCLP(amount)}`);
 }
 
-function removePlayer(playerId) {
+async function removePlayer(playerId) {
   if (!isAdmin) {
     showToast('🔒 Solo el administrador puede eliminar participantes');
     return;
   }
   const player = state.players.find(p => p.id === playerId);
   const label = player ? getPlayerLabel(player, state.players.indexOf(player)) : 'este participante';
-  if (!confirm(`¿Eliminar a "${label}" y todas sus predicciones?\nSe guardará un backup automático antes.`)) return;
+  const ok = await confirmModal('Eliminar participante', `¿Eliminar a "${label}" y todas sus predicciones?\nSe guardará un backup automático antes.`, 'Sí, eliminar');
+  if (!ok) return;
   createBackup('Antes de eliminar participante');
   state.players = state.players.filter(p => p.id !== playerId);
   Object.keys(state.groupPreds).forEach(mid => {
@@ -2616,16 +2758,21 @@ function removePlayer(playerId) {
   showToast('🗑 Participante eliminado');
 }
 
-function manualBackup() {
-  const label = (prompt('Nombre para el backup (opcional):', '') ?? '').trim();
-  createBackup(label || 'Manual');
+async function manualBackup() {
+  const label = await showModal({
+    title: 'Guardar backup', body: 'Nombre para el backup (opcional):',
+    input: true, inputType: 'text', placeholder: 'Ej: Antes de octavos', okText: 'Guardar',
+  });
+  if (label === null) return; // cancelado
+  createBackup(label.trim() || 'Manual');
   renderBackupList();
   showToast('💾 Backup guardado');
 }
 
-function resetAll() {
+async function resetAll() {
+  const ok = await confirmModal('Reiniciar todo', '¿Borrar todo y empezar desde cero?\n\nSe guardará un backup automático que podrás restaurar desde la sección Backups.', 'Sí, reiniciar');
+  if (!ok) return;
   createBackup('Antes de reiniciar');
-  if (!confirm('¿Borrar todo y empezar desde cero?\n\nSe guardó un backup automático que puedes restaurar desde la sección Backups en la pestaña Jugadores.')) return;
   state = defaultState();
   saveState();
   renderPlayers();
