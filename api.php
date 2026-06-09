@@ -119,6 +119,19 @@ function checkAdmin(array $s, string $pin): bool {
   return !empty($s['adminHash']) && hash_equals((string)$s['adminHash'], h($pin));
 }
 
+// Horario de partidos: matchId => 'YYYY-MM-DDTHH:mm' (hora de México, UTC-6)
+$SCHEDULE = json_decode(@file_get_contents(__DIR__ . '/schedule.json'), true);
+if (!is_array($SCHEDULE)) $SCHEDULE = [];
+
+// ¿Ya empezó el partido? (si no conocemos el horario, no bloqueamos)
+function matchStarted(array $sched, string $matchId): bool {
+  if (!isset($sched[$matchId])) return false;
+  try {
+    $kick = new DateTime($sched[$matchId] . ':00-06:00'); // hora de México
+    return (new DateTime('now')) >= $kick;
+  } catch (Exception $e) { return false; }
+}
+
 // ── Router ───────────────────────────────────────────────────────
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
@@ -274,6 +287,8 @@ switch ($op) {
       http_response_code(403); out(['ok' => false, 'error' => 'codigo']);
     }
     if ($mid === '') { http_response_code(400); out(['ok' => false, 'error' => 'match']); }
+    // Regla del juego: no se puede crear/modificar la predicción una vez empezado el partido
+    if (matchStarted($SCHEDULE, $mid)) { http_response_code(403); out(['ok' => false, 'error' => 'cerrado']); }
 
     if (!isset($state[$scope]) || !is_array($state[$scope])) $state[$scope] = [];
     if (!isset($state[$scope][$mid]) || !is_array($state[$scope][$mid])) $state[$scope][$mid] = [];

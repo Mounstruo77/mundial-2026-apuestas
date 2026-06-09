@@ -902,6 +902,15 @@
 
   /* Predictions */
   .preds { display: grid; gap: .35rem; }
+  .pred-empty-note {
+    font-size: .78rem;
+    color: var(--muted);
+    text-align: center;
+    padding: .55rem .5rem;
+    background: var(--bg-soft);
+    border: 1px dashed var(--border);
+    border-radius: var(--radius-sm);
+  }
   .pred {
     display: grid;
     grid-template-columns: minmax(80px, 130px) 1fr 38px;
@@ -2637,6 +2646,17 @@ function applyServerState(srv) {
 // Helpers de aprobación
 function isApproved(p) { return (p && (p.status || 'approved') === 'approved'); }
 function approvedPlayers() { return state.players.filter(isApproved); }
+
+// ¿Qué filas de predicción se muestran en una tarjeta de partido?
+//  • Admin o modo local: todas.
+//  • Partido ya empezado (locked): todas (se revelan las apuestas de ese partido).
+//  • Antes de empezar, usuario normal: SOLO la suya (no ve las de los demás).
+function visiblePlayersForMatch(locked) {
+  if (!cloudOn || isAdmin) return approvedPlayers();
+  if (locked) return approvedPlayers();
+  const mp = myPlayer();
+  return (mp && isApproved(mp)) ? [mp] : [];
+}
 function pendingPlayers()  { return state.players.filter(p => (p.status || 'approved') === 'pending'); }
 function myPlayer() { return myId ? state.players.find(p => p.id === myId) : null; }
 function amIPending() { const mp = myPlayer(); return !!mp && !isApproved(mp); }
@@ -2715,6 +2735,19 @@ async function rejectPlayer(playerId) {
   if (await adminOp({ op: 'removePlayer', playerId })) { renderPlayers(); renderTabla(); showToast('🗑 Registro rechazado'); }
 }
 
+// Vuelve a leer el estado del servidor y refresca la vista actual
+async function refreshFromServer() {
+  try {
+    const srv = await apiGet();
+    applyServerState(srv);
+    const tab = document.querySelector('.tab.active')?.dataset.tab;
+    if (tab === 'grupos') renderGroups();
+    else if (tab === 'eliminacion') refreshAllKOCards();
+    else if (tab === 'tabla') renderTabla();
+    renderPlayers(); updateIdentityUI();
+  } catch {}
+}
+
 // Empuja una predicción del usuario actual
 async function pushPred(scope, matchId, playerId, value) {
   if (!cloudOn) return;
@@ -2722,6 +2755,8 @@ async function pushPred(scope, matchId, playerId, value) {
   try {
     const r = await apiPost({ op: 'pred', playerId, code, scope, matchId, value });
     if (r && r.ok) { lastUpdatedAt = r.updatedAt || lastUpdatedAt; }
+    else if (r && r.error === 'cerrado') { showToast('🔒 El partido ya empezó — apuesta cerrada'); refreshFromServer(); }
+    else if (r && r.error === 'pendiente') { showToast('⏳ Tu registro aún no está aprobado'); refreshFromServer(); }
     else { showToast('❌ No se pudo guardar tu apuesta'); }
   } catch { showToast('❌ Sin conexión con el servidor'); }
 }
@@ -3383,7 +3418,8 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
   preds.className = 'preds';
   const locked = isStarted(dateISO);
 
-  approvedPlayers().forEach((player, pIdx) => {
+  const visG = visiblePlayersForMatch(locked);
+  visG.forEach((player, pIdx) => {
     const pred = (state.groupPreds[matchId] || {})[player.id] || '';
     const ptsClass = !result ? 'empty' : (pred === result ? 'win' : 'zero');
     const ptsText = !result ? '' : (pred === result ? '+3' : '0');
@@ -3430,6 +3466,11 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
     `;
     preds.appendChild(row);
   });
+  if (!visG.length) {
+    preds.innerHTML = `<div class="pred-empty-note">${cloudOn && !isAdmin && !myPlayer()
+      ? '🔑 Regístrate o entra para apostar.'
+      : '🔒 Las apuestas de los demás se revelan cuando empieza el partido.'}</div>`;
+  }
   card.appendChild(preds);
 
   const real = document.createElement('div');
@@ -3924,7 +3965,8 @@ function buildKOCard(matchId, t1, t2, phase, dateISO, venue) {
   const koLocked = isStarted(dateISO);
   const preds = document.createElement('div');
   preds.className = 'preds';
-  approvedPlayers().forEach((player, pIdx) => {
+  const visK = visiblePlayersForMatch(koLocked);
+  visK.forEach((player, pIdx) => {
     const pred = (state.koPreds[matchId] || {})[player.id] || '';
     const ptsClass = !result ? 'empty' : (pred && pred === result ? 'win' : 'zero');
     const ptsText = !result ? '' : (pred && pred === result ? `+${phase.pts}` : '0');
@@ -3965,6 +4007,11 @@ function buildKOCard(matchId, t1, t2, phase, dateISO, venue) {
 
     preds.appendChild(row);
   });
+  if (!visK.length) {
+    preds.innerHTML = `<div class="pred-empty-note">${cloudOn && !isAdmin && !myPlayer()
+      ? '🔑 Regístrate o entra para apostar.'
+      : '🔒 Las apuestas de los demás se revelan cuando empieza el partido.'}</div>`;
+  }
   card.appendChild(preds);
 
   // Real result dropdown
