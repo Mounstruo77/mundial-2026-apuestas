@@ -94,6 +94,7 @@ function publicState(array $s): array {
       'name'    => (string)($p['name'] ?? ''),
       'amount'  => (int)($p['amount'] ?? 10000),
       'hasCode' => !empty($p['codeHash']),
+      'status'  => (string)($p['status'] ?? 'approved'),
     ];
   }
   return [
@@ -157,54 +158,82 @@ switch ($op) {
     out(['ok' => checkAdmin($state, $pin)]);
   }
 
-  // Admin guarda jugadores / montos / códigos / resultados (NO toca predicciones)
-  case 'admin': {
+  // Un usuario se registra solo (queda PENDIENTE de aprobación) con su propia clave
+  case 'register': {
+    $name = mb_substr(preg_replace('/[<>"\'&\x00-\x1F\x7F]/u', '', (string)($body['name'] ?? '')), 0, 40);
+    $name = trim($name);
+    $amount = (int)($body['amount'] ?? 10000);
+    $code = (string)($body['code'] ?? '');
+    if ($name === '') out(['ok' => false, 'error' => 'nombre']);
+    if (strlen($code) < 4) out(['ok' => false, 'error' => 'clave_corta']);
+    if ($amount < 10000) $amount = 10000;
+    if ($amount > 100000000) $amount = 100000000;
+    if (count($state['players'] ?? []) >= 100) out(['ok' => false, 'error' => 'lleno']);
+    // id único
+    $id = substr(bin2hex(random_bytes(6)), 0, 7);
+    $state['players'][] = [
+      'id' => $id, 'name' => $name, 'amount' => $amount,
+      'codeHash' => h($code), 'status' => 'pending',
+    ];
+    saveState($FILE, $state);
+    out(['ok' => true, 'playerId' => $id, 'state' => publicState($state)]);
+  }
+
+  // Admin aprueba un registro pendiente
+  case 'approve': {
     $pin = (string)($body['pin'] ?? '');
     if (!checkAdmin($state, $pin)) { http_response_code(403); out(['ok' => false, 'error' => 'pin']); }
-
-    $prev = [];
-    foreach (($state['players'] ?? []) as $p) {
-      if (is_array($p) && isset($p['id'])) $prev[(string)$p['id']] = $p;
+    $id = (string)($body['playerId'] ?? '');
+    $found = false;
+    foreach ($state['players'] as &$p) {
+      if (is_array($p) && (string)($p['id'] ?? '') === $id) { $p['status'] = 'approved'; $found = true; break; }
     }
+    unset($p);
+    if (!$found) out(['ok' => false, 'error' => 'no_existe']);
+    saveState($FILE, $state);
+    out(['ok' => true, 'state' => publicState($state)]);
+  }
 
-    $players = [];
-    foreach (($body['players'] ?? []) as $p) {
-      if (!is_array($p)) continue;
-      $id = (string)($p['id'] ?? '');
-      if ($id === '') continue;
-      $name = mb_substr(preg_replace('/[<>"\'&\x00-\x1F\x7F]/u', '', (string)($p['name'] ?? '')), 0, 40);
-      $amount = (int)($p['amount'] ?? 10000);
-      if ($amount < 10000) $amount = 10000;
-      if ($amount > 100000000) $amount = 100000000;
-      $entry = ['id' => $id, 'name' => $name, 'amount' => $amount];
-      if (isset($p['code']) && (string)$p['code'] !== '') {
-        $entry['codeHash'] = h((string)$p['code']);          // código nuevo
-      } elseif (isset($prev[$id]['codeHash'])) {
-        $entry['codeHash'] = $prev[$id]['codeHash'];          // conservar código anterior
-      }
-      $players[] = $entry;
-    }
-    $state['players'] = $players;
-
-    if (isset($body['groupResults']) && is_array($body['groupResults'])) {
-      $state['groupResults'] = $body['groupResults'];
-    }
-    if (isset($body['koResults']) && is_array($body['koResults'])) {
-      $state['koResults'] = $body['koResults'];
-    }
-
-    // Limpiar predicciones de jugadores eliminados
-    $valid = array_flip(array_column($players, 'id'));
+  // Admin elimina/rechaza un jugador (y sus predicciones)
+  case 'removePlayer': {
+    $pin = (string)($body['pin'] ?? '');
+    if (!checkAdmin($state, $pin)) { http_response_code(403); out(['ok' => false, 'error' => 'pin']); }
+    $id = (string)($body['playerId'] ?? '');
+    $state['players'] = array_values(array_filter($state['players'], function ($p) use ($id) {
+      return !(is_array($p) && (string)($p['id'] ?? '') === $id);
+    }));
     foreach (['groupPreds','koPreds'] as $pk) {
-      if (!isset($state[$pk]) || !is_array($state[$pk])) { $state[$pk] = []; continue; }
+      if (!isset($state[$pk]) || !is_array($state[$pk])) continue;
       foreach ($state[$pk] as $mid => $byPlayer) {
-        if (!is_array($byPlayer)) { unset($state[$pk][$mid]); continue; }
-        foreach ($byPlayer as $pid => $v) {
-          if (!isset($valid[$pid])) unset($state[$pk][$mid][$pid]);
-        }
+        if (is_array($byPlayer) && isset($byPlayer[$id])) unset($state[$pk][$mid][$id]);
       }
     }
+    saveState($FILE, $state);
+    out(['ok' => true, 'state' => publicState($state)]);
+  }
 
+  // Admin ajusta el monto de un jugador
+  case 'setAmount': {
+    $pin = (string)($body['pin'] ?? '');
+    if (!checkAdmin($state, $pin)) { http_response_code(403); out(['ok' => false, 'error' => 'pin']); }
+    $id = (string)($body['playerId'] ?? '');
+    $amount = (int)($body['amount'] ?? 10000);
+    if ($amount < 10000) $amount = 10000;
+    if ($amount > 100000000) $amount = 100000000;
+    foreach ($state['players'] as &$p) {
+      if (is_array($p) && (string)($p['id'] ?? '') === $id) { $p['amount'] = $amount; break; }
+    }
+    unset($p);
+    saveState($FILE, $state);
+    out(['ok' => true, 'state' => publicState($state)]);
+  }
+
+  // Admin guarda resultados (no toca jugadores ni predicciones)
+  case 'results': {
+    $pin = (string)($body['pin'] ?? '');
+    if (!checkAdmin($state, $pin)) { http_response_code(403); out(['ok' => false, 'error' => 'pin']); }
+    if (isset($body['groupResults']) && is_array($body['groupResults'])) $state['groupResults'] = $body['groupResults'];
+    if (isset($body['koResults'])    && is_array($body['koResults']))    $state['koResults']    = $body['koResults'];
     saveState($FILE, $state);
     out(['ok' => true, 'state' => publicState($state)]);
   }
@@ -225,6 +254,7 @@ switch ($op) {
     $code = (string)($body['code'] ?? '');
     $player = findPlayer($state, $id);
     if (!$player) out(['ok' => false, 'error' => 'no_existe']);
+    if (($player['status'] ?? 'approved') !== 'approved') out(['ok' => false, 'error' => 'pendiente']);
     if (empty($player['codeHash'])) out(['ok' => true]); // jugador sin código
     out(['ok' => hash_equals((string)$player['codeHash'], h($code))]);
   }
@@ -239,6 +269,7 @@ switch ($op) {
 
     $player = findPlayer($state, $id);
     if (!$player) { http_response_code(403); out(['ok' => false, 'error' => 'jugador']); }
+    if (($player['status'] ?? 'approved') !== 'approved') { http_response_code(403); out(['ok' => false, 'error' => 'pendiente']); }
     if (!empty($player['codeHash']) && !hash_equals((string)$player['codeHash'], h($code))) {
       http_response_code(403); out(['ok' => false, 'error' => 'codigo']);
     }

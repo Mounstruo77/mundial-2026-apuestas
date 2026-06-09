@@ -440,10 +440,12 @@
   /* ═════════ INSCRIPCIÓN + MONTOS ═════════ */
   .enroll-form {
     display: grid;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr;
     gap: .5rem;
     margin-bottom: 1rem;
   }
+  .enroll-form .enroll-amount, .enroll-form .enroll-pass { width: 100%; }
+  .enroll-form .enroll-amount .enroll-input { width: 100%; }
   .enroll-input {
     background: var(--bg-soft);
     border: 1px solid var(--line);
@@ -552,6 +554,27 @@
     border-radius: var(--radius-sm);
     font-style: italic;
   }
+
+  /* Pendientes de aprobación */
+  .pending-head {
+    font-size: .68rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--amber);
+    margin: .2rem 0 .1rem;
+  }
+  .player-row.pending {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: .6rem;
+    border-color: rgba(255,170,43,.35);
+    background: rgba(255,170,43,.07);
+  }
+  .player-row.pending .player-locked { flex: 1; }
+  .pending-actions { display: flex; align-items: center; gap: .4rem; flex-shrink: 0; }
+  .pending-actions .btn-sm { padding: .35rem .7rem; font-size: .76rem; min-height: 36px; }
 
   /* Pozo (pestaña jugadores) */
   .pot-callout {
@@ -1790,19 +1813,22 @@
 <section id="tab-jugadores" class="section active">
   <div class="card">
     <div class="card-title"><span class="ic-lg">👥</span> Participantes</div>
-    <div class="card-subtitle">Inscríbete con tu nombre y tu monto de apuesta — mínimo <strong style="color:var(--neon)">$10.000</strong>, sin tope. Una vez inscrito quedas fijo: solo el administrador puede eliminarte.</div>
+    <div class="card-subtitle">Regístrate con tu nombre, tu monto (mínimo <strong style="color:var(--neon)">$10.000</strong>, sin tope) y una <strong style="color:var(--neon)">clave personal</strong>. Tu registro queda <strong>pendiente</strong> hasta que el administrador lo apruebe. Luego entras con tu nombre y tu clave para apostar.</div>
 
-    <div class="enroll-form">
+    <div class="enroll-form" id="enroll-form">
       <input class="enroll-input enroll-name" id="enroll-name" type="text"
-             placeholder="Nombre del participante" maxlength="22"
-             onkeydown="if(event.key==='Enter')inscribePlayer()">
+             placeholder="Tu nombre" maxlength="22"
+             onkeydown="if(event.key==='Enter')submitEnroll()">
       <div class="enroll-amount">
         <span class="enroll-prefix">$</span>
         <input class="enroll-input" id="enroll-amount" type="number"
-               inputmode="numeric" min="10000" step="1000" placeholder="10.000"
-               onkeydown="if(event.key==='Enter')inscribePlayer()">
+               inputmode="numeric" min="10000" step="1000" placeholder="Monto (mín. 10.000)"
+               onkeydown="if(event.key==='Enter')submitEnroll()">
       </div>
-      <button class="btn btn-primary enroll-btn" onclick="inscribePlayer()">+ Inscribir</button>
+      <input class="enroll-input enroll-pass" id="enroll-pass" type="password"
+             placeholder="Crea tu clave personal (mín. 4)" maxlength="20" autocomplete="off"
+             onkeydown="if(event.key==='Enter')submitEnroll()">
+      <button class="btn btn-primary enroll-btn" id="enroll-btn" onclick="submitEnroll()">+ Registrarme</button>
     </div>
 
     <div class="players-list" id="players-list"></div>
@@ -2457,7 +2483,6 @@ async function toggleAdmin() {
     const res = await apiPost({ op: 'claimAdmin', pin: p1 });
     if (res && res.ok) {
       isAdmin = true; adminPin = p1; serverHasAdmin = true; clearMe();
-      await pushAdmin();
       refreshAdminUI(); updateIdentityUI(); renderPlayers(); renderTabla();
       showToast('✅ Administrador creado');
     } else {
@@ -2524,7 +2549,8 @@ async function changeAdminPin() {
 
 // ═════════════════ PREMIOS (pozo + reparto ponderado) ═════════════════
 function computePot() {
-  return state.players.reduce((s, p) => s + normalizeAmount(p.amount), 0);
+  const ps = cloudOn ? approvedPlayers() : state.players;
+  return ps.reduce((s, p) => s + normalizeAmount(p.amount), 0);
 }
 
 // Reparte el pozo entre el podio: peso_i = %posición(70/20/10) × monto apostado_i.
@@ -2597,7 +2623,8 @@ async function apiPost(payload) {
 function applyServerState(srv) {
   const coerce = o => (o && typeof o === 'object' && !Array.isArray(o)) ? o : {};
   state.players      = (srv.players || []).map(p => ({
-    id: p.id, name: p.name || '', amount: normalizeAmount(p.amount), hasCode: !!p.hasCode,
+    id: p.id, name: p.name || '', amount: normalizeAmount(p.amount),
+    hasCode: !!p.hasCode, status: p.status || 'approved',
   }));
   state.groupPreds   = coerce(srv.groupPreds);
   state.groupResults = coerce(srv.groupResults);
@@ -2607,11 +2634,19 @@ function applyServerState(srv) {
   lastUpdatedAt      = srv.updatedAt || 0;
 }
 
+// Helpers de aprobación
+function isApproved(p) { return (p && (p.status || 'approved') === 'approved'); }
+function approvedPlayers() { return state.players.filter(isApproved); }
+function pendingPlayers()  { return state.players.filter(p => (p.status || 'approved') === 'pending'); }
+function myPlayer() { return myId ? state.players.find(p => p.id === myId) : null; }
+function amIPending() { const mp = myPlayer(); return !!mp && !isApproved(mp); }
+
 // ¿Puede esta persona editar las predicciones de "playerId"?
 function canEdit(playerId) {
   if (!cloudOn) return true;   // modo local = como siempre
   if (isAdmin)  return true;   // admin edita todo
-  return playerId === myId;    // usuario normal: solo lo suyo
+  const mp = myPlayer();
+  return !!mp && isApproved(mp) && playerId === myId;  // usuario aprobado: solo lo suyo
 }
 
 // Inicializa la sincronización (se llama en init)
@@ -2651,26 +2686,33 @@ function startPolling() {
       else if (tab === 'eliminacion') refreshAllKOCards();
       else if (tab === 'tabla') renderTabla();
       if (!editing) renderPlayers();
+      updateIdentityUI();
     } catch {}
   }, 4000);
 }
 
-// Empuja al servidor los datos que maneja el admin (jugadores/montos/códigos/resultados)
-async function pushAdmin() {
+// Operación de admin genérica (envía el PIN y aplica el estado devuelto)
+async function adminOp(payload) {
   if (!cloudOn || !isAdmin) return false;
   pushingAdmin = true;
   try {
-    const codes = loadCodes();
-    const players = state.players.map(p => ({
-      id: p.id, name: p.name, amount: normalizeAmount(p.amount),
-      code: p._newCode || '',  // solo se envía cuando hay código nuevo; si no, el server conserva el anterior
-    }));
-    const r = await apiPost({ op: 'admin', pin: adminPin, players, groupResults: state.groupResults, koResults: state.koResults });
-    if (r && r.ok && r.state) { applyServerState(r.state); }
-    else if (r && !r.ok) { showToast('❌ Error al guardar en el servidor'); return false; }
-    return true;
+    const r = await apiPost({ ...payload, pin: adminPin });
+    if (r && r.ok && r.state) { applyServerState(r.state); return true; }
+    if (r && !r.ok) { showToast('❌ ' + (r.error || 'Error en el servidor')); return false; }
+    return !!(r && r.ok);
   } catch (e) { showToast('❌ Sin conexión con el servidor'); return false; }
   finally { pushingAdmin = false; }
+}
+async function pushResults()                   { return adminOp({ op: 'results', groupResults: state.groupResults, koResults: state.koResults }); }
+async function pushSetAmount(playerId, amount) { return adminOp({ op: 'setAmount', playerId, amount }); }
+async function pushRemovePlayer(playerId)      { return adminOp({ op: 'removePlayer', playerId }); }
+async function approvePlayer(playerId) {
+  if (await adminOp({ op: 'approve', playerId })) { renderPlayers(); renderTabla(); updateIdentityUI(); showToast('✅ Jugador aprobado'); }
+}
+async function rejectPlayer(playerId) {
+  const ok = await confirmModal('Rechazar registro', '¿Rechazar y eliminar este registro pendiente?', 'Sí, rechazar');
+  if (!ok) return;
+  if (await adminOp({ op: 'removePlayer', playerId })) { renderPlayers(); renderTabla(); showToast('🗑 Registro rechazado'); }
 }
 
 // Empuja una predicción del usuario actual
@@ -2703,42 +2745,58 @@ function updateIdentityUI() {
   if (!cloudOn) { bar.style.display = 'none'; return; }
   bar.style.display = 'flex';
   const who = document.getElementById('identity-who');
-  const meP = myId ? state.players.find(p => p.id === myId) : null;
+  const actionBtn = document.getElementById('identity-action');
+  const logoutBtn = document.getElementById('identity-logout');
+  const meP = myPlayer();
+
   if (isAdmin) {
     who.innerHTML = `👑 <strong>Administrador</strong>`;
+    actionBtn.style.display = 'none';
+    logoutBtn.style.display = 'none';
+  } else if (meP && !isApproved(meP)) {
+    who.innerHTML = `⏳ <strong>${escapeHTML(meP.name)}</strong> — pendiente de aprobación`;
+    actionBtn.style.display = 'none';
+    logoutBtn.textContent = 'Cancelar';
+    logoutBtn.style.display = '';
   } else if (meP) {
-    who.innerHTML = `👤 Estás jugando como <strong>${escapeHTML(meP.name)}</strong>`;
+    who.innerHTML = `👤 Juegas como <strong>${escapeHTML(meP.name)}</strong>`;
+    actionBtn.textContent = 'Cambiar';
+    actionBtn.style.display = '';
+    logoutBtn.textContent = 'Salir';
+    logoutBtn.style.display = '';
   } else {
-    who.innerHTML = `👋 Aún no elegiste quién eres`;
+    who.innerHTML = `👋 ¿Ya estás registrado?`;
+    actionBtn.textContent = 'Entrar';
+    actionBtn.style.display = '';
+    logoutBtn.style.display = 'none';
   }
-  const btn = document.getElementById('identity-action');
-  btn.textContent = (myId || isAdmin) ? 'Cambiar' : 'Elegir';
 }
 
 async function openIdentityPicker() {
   if (!cloudOn) { showToast('Sin servidor: modo local'); return; }
-  if (!state.players.length) { showToast('Aún no hay participantes inscritos'); return; }
+  const aprob = approvedPlayers();
+  if (!aprob.length) { showToast('Aún no hay jugadores aprobados'); return; }
 
-  // Lista de nombres para tocar (botón por jugador)
+  // Lista de nombres para tocar (botón por jugador aprobado)
   const choiceId = await showModal({
     title: '¿Quién eres?',
     body: 'Toca tu nombre en la lista:',
-    choices: state.players.map(p => ({
+    choices: aprob.map(p => ({
       label: p.name || '(sin nombre)',
       value: p.id,
-      hint: p.hasCode ? '🔒 código' : '',
+      hint: p.hasCode ? '🔒 clave' : '',
     })),
     cancelText: 'Cancelar',
   });
   if (choiceId === null) return;
-  const player = state.players.find(p => p.id === choiceId);
+  const player = aprob.find(p => p.id === choiceId);
   if (!player) { showToast('Jugador no encontrado'); return; }
 
   let code = '';
   if (player.hasCode) {
     const c = await showModal({
-      title: `Hola ${player.name}`, body: 'Ingresa tu código personal (te lo da el administrador).',
-      input: true, inputType: 'password', placeholder: 'Código', okText: 'Entrar',
+      title: `Hola ${player.name}`, body: 'Ingresa tu clave personal (la que creaste al registrarte).',
+      input: true, inputType: 'password', placeholder: 'Tu clave', okText: 'Entrar',
     });
     if (c === null) return;
     code = c.trim();
@@ -2958,7 +3016,8 @@ function isFinished(iso) {
 }
 
 function updatePlayerCountBadge() {
-  document.getElementById('badge-players').textContent = state.players.length;
+  const n = cloudOn ? approvedPlayers().length : state.players.length;
+  document.getElementById('badge-players').textContent = n;
 }
 
 // ═════════════════ TABS ═════════════════
@@ -3003,36 +3062,80 @@ function renderPlayers() {
   const list = document.getElementById('players-list');
   list.innerHTML = '';
 
-  // El formulario de inscripción solo lo ve el admin (o en modo local)
-  const enroll = document.querySelector('.enroll-form');
-  if (enroll) enroll.style.display = (!cloudOn || isAdmin) ? 'grid' : 'none';
-
-  if (state.players.length === 0) {
-    list.innerHTML = `<div class="players-empty">Aún no hay participantes${(!cloudOn || isAdmin) ? '. Usa el formulario de arriba para inscribir al primero. 👆' : ' inscritos todavía.'}</div>`;
+  // Formulario: registro (nube, no identificado) · inscripción (local) · oculto (admin o ya registrado)
+  const enroll = document.getElementById('enroll-form');
+  const passEl = document.getElementById('enroll-pass');
+  const enrollBtn = document.getElementById('enroll-btn');
+  if (enroll) {
+    const showForm = cloudOn ? (!isAdmin && !myId) : true;
+    enroll.style.display = showForm ? 'grid' : 'none';
+    if (passEl) passEl.style.display = cloudOn ? 'block' : 'none';
+    if (enrollBtn) enrollBtn.textContent = cloudOn ? '＋ Registrarme' : '＋ Inscribir';
   }
 
-  state.players.forEach((p, i) => {
+  // ── Pendientes de aprobación (solo admin) ──
+  if (isAdmin && cloudOn) {
+    const pend = pendingPlayers();
+    if (pend.length) {
+      const head = document.createElement('div');
+      head.className = 'pending-head';
+      head.textContent = `⏳ Pendientes de aprobación (${pend.length})`;
+      list.appendChild(head);
+      pend.forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'player-row pending';
+        row.innerHTML = `
+          <div class="player-locked">
+            <span class="player-name-text">${escapeHTML(p.name)}</span>
+            <span class="player-amount-text">${fmtCLP(normalizeAmount(p.amount))}</span>
+          </div>
+          <div class="pending-actions">
+            <button class="btn btn-primary btn-sm" data-approve="${p.id}">✓ Aprobar</button>
+            <button class="btn-sm-del" data-reject="${p.id}" title="Rechazar">×</button>
+          </div>`;
+        list.appendChild(row);
+      });
+      list.querySelectorAll('[data-approve]').forEach(b => b.addEventListener('click', () => approvePlayer(b.dataset.approve)));
+      list.querySelectorAll('[data-reject]').forEach(b => b.addEventListener('click', () => rejectPlayer(b.dataset.reject)));
+    }
+  }
+
+  // ── Jugadores aprobados ──
+  const approved = approvedPlayers();
+  if (approved.length === 0 && !(isAdmin && cloudOn && pendingPlayers().length)) {
+    const empty = document.createElement('div');
+    empty.className = 'players-empty';
+    empty.textContent = cloudOn
+      ? (isAdmin ? 'Aún no hay jugadores aprobados.' : 'Aún no hay jugadores. ¡Regístrate arriba! 👆')
+      : 'Aún no hay participantes. Usa el formulario de arriba. 👆';
+    list.appendChild(empty);
+  }
+
+  approved.forEach((p, i) => {
     const row = document.createElement('div');
     const amount = normalizeAmount(p.amount);
     const isMe = cloudOn && !isAdmin && p.id === myId;
 
-    if (isAdmin) {
-      const code = cloudOn ? getCode(p.id) : '';
+    if (isAdmin && !cloudOn) {
       row.className = 'player-row admin';
       row.innerHTML = `
         <div class="player-rank">#${i + 1}</div>
         <div class="player-edit">
-          <input class="player-input" type="text" placeholder="Nombre"
-                 value="${escapeHTML(p.name)}" maxlength="22" data-pid="${p.id}">
-          <div class="enroll-amount sm">
-            <span class="enroll-prefix">$</span>
-            <input class="player-amount-input" type="number" inputmode="numeric"
-                   min="10000" step="1000" value="${amount}" data-amt="${p.id}">
-          </div>
-          ${cloudOn ? `<span class="player-code-chip" title="Código personal para compartir">🔑 ${code ? escapeHTML(code) : (p.hasCode ? '••••' : '—')}</span>` : ''}
+          <input class="player-input" type="text" placeholder="Nombre" value="${escapeHTML(p.name)}" maxlength="22" data-pid="${p.id}">
+          <div class="enroll-amount sm"><span class="enroll-prefix">$</span>
+            <input class="player-amount-input" type="number" inputmode="numeric" min="10000" step="1000" value="${amount}" data-amt="${p.id}"></div>
         </div>
-        <button class="btn-icon" data-remove="${p.id}" title="Eliminar participante">×</button>
-      `;
+        <button class="btn-icon" data-remove="${p.id}" title="Eliminar participante">×</button>`;
+    } else if (isAdmin && cloudOn) {
+      row.className = 'player-row admin';
+      row.innerHTML = `
+        <div class="player-rank">#${i + 1}</div>
+        <div class="player-edit">
+          <span class="player-name-text" style="flex:1;min-width:0">${escapeHTML(getPlayerLabel(p, i))}</span>
+          <div class="enroll-amount sm"><span class="enroll-prefix">$</span>
+            <input class="player-amount-input" type="number" inputmode="numeric" min="10000" step="1000" value="${amount}" data-amt="${p.id}"></div>
+        </div>
+        <button class="btn-icon" data-remove="${p.id}" title="Eliminar participante">×</button>`;
     } else {
       row.className = 'player-row locked';
       row.innerHTML = `
@@ -3042,29 +3145,28 @@ function renderPlayers() {
           ${isMe ? '<span class="player-me-tag">Tú</span>' : ''}
           <span class="player-amount-text">${fmtCLP(amount)}</span>
         </div>
-        <div class="player-lock" title="Inscrito — solo el administrador puede eliminar">🔒</div>
-      `;
+        <div class="player-lock" title="Aprobado">✓</div>`;
     }
     list.appendChild(row);
   });
 
   if (isAdmin) {
-    list.querySelectorAll('.player-input').forEach(input => {
-      input.addEventListener('input', e => {
-        const player = state.players.find(p => p.id === e.target.dataset.pid);
-        if (player) { player.name = SECURITY.sanitizeName(e.target.value); saveState(); }
+    if (!cloudOn) {
+      list.querySelectorAll('.player-input').forEach(input => {
+        input.addEventListener('input', e => {
+          const player = state.players.find(p => p.id === e.target.dataset.pid);
+          if (player) { player.name = SECURITY.sanitizeName(e.target.value); saveState(); }
+        });
       });
-      input.addEventListener('change', () => { if (cloudOn) pushAdmin(); });
-    });
+    }
     list.querySelectorAll('.player-amount-input').forEach(input => {
       input.addEventListener('change', e => {
         const player = state.players.find(p => p.id === e.target.dataset.amt);
         if (player) {
           player.amount = normalizeAmount(e.target.value);
           e.target.value = player.amount;
-          saveState();
           renderPotCallout();
-          if (cloudOn) pushAdmin();
+          if (cloudOn) pushSetAmount(player.id, player.amount); else saveState();
           showToast('💰 Monto actualizado');
         }
       });
@@ -3081,7 +3183,7 @@ function renderPlayers() {
 function renderPotCallout() {
   const el = document.getElementById('pot-callout');
   if (!el) return;
-  const n = state.players.length;
+  const n = (cloudOn ? approvedPlayers() : state.players).length;
   if (n === 0) { el.innerHTML = ''; return; }
   const pot = computePot();
   el.innerHTML = `
@@ -3091,54 +3193,65 @@ function renderPotCallout() {
   `;
 }
 
-function inscribePlayer() {
-  if (cloudOn && !isAdmin) {
-    showToast('🔒 Solo el administrador puede inscribir participantes');
-    return;
-  }
+// El botón del formulario: en la nube = registrarse; local = inscribir directo
+function submitEnroll() {
+  if (cloudOn) registerSelf();
+  else inscribePlayer();
+}
+
+// Lee y valida nombre + monto del formulario. Devuelve {name, amount} o null.
+function readEnroll() {
   const nameEl = document.getElementById('enroll-name');
   const amtEl  = document.getElementById('enroll-amount');
-  if (!nameEl || !amtEl) return;
-
+  if (!nameEl || !amtEl) return null;
   const name = SECURITY.sanitizeName(nameEl.value);
-  if (!name) { showToast('⚠️ Escribe el nombre del participante'); nameEl.focus(); return; }
-  if (state.players.length >= SECURITY.MAX_PLAYERS) {
-    showToast(`⚠️ Máximo ${SECURITY.MAX_PLAYERS} participantes`);
-    return;
-  }
-
+  if (!name) { showToast('⚠️ Escribe tu nombre'); nameEl.focus(); return null; }
   const raw = amtEl.value.trim();
   const rawAmt = Math.round(Number(raw));
   if (raw !== '' && (!Number.isFinite(rawAmt) || rawAmt < MIN_BET)) {
-    showToast(`⚠️ El monto mínimo es ${fmtCLP(MIN_BET)}`);
-    amtEl.focus();
-    return;
+    showToast(`⚠️ El monto mínimo es ${fmtCLP(MIN_BET)}`); amtEl.focus(); return null;
   }
-  const amount = normalizeAmount(raw === '' ? MIN_BET : rawAmt);
+  return { name, amount: normalizeAmount(raw === '' ? MIN_BET : rawAmt) };
+}
 
-  const id = uid();
-  const player = { id, name, amount };
-  let code = '';
-  if (cloudOn) {
-    code = String(Math.floor(1000 + Math.random() * 9000)); // código de 4 dígitos
-    player.hasCode = true;
-    player._newCode = code;
-    setCode(id, code);
-  }
-  state.players.push(player);
-  saveState();
-  nameEl.value = '';
-  amtEl.value = '';
-  nameEl.focus();
+// Auto-registro (modo nube): queda pendiente de aprobación del admin
+async function registerSelf() {
+  if (myId) { showToast('Ya estás registrado'); return; }
+  const data = readEnroll();
+  if (!data) return;
+  const passEl = document.getElementById('enroll-pass');
+  const code = (passEl?.value || '').trim();
+  if (code.length < 4) { showToast('⚠️ Tu clave debe tener al menos 4 caracteres'); passEl?.focus(); return; }
 
-  if (cloudOn) {
-    pushAdmin().then(() => { renderPlayers(); renderTabla(); });
-    renderPlayers(); renderTabla();
-    showToast(`✅ ${name} inscrito · código ${code}`);
+  const r = await apiPost({ op: 'register', name: data.name, amount: data.amount, code });
+  if (r && r.ok) {
+    myId = r.playerId; myCode = code; isAdmin = false; saveMe();
+    if (r.state) applyServerState(r.state);
+    document.getElementById('enroll-name').value = '';
+    document.getElementById('enroll-amount').value = '';
+    if (passEl) passEl.value = '';
+    updateIdentityUI(); renderPlayers(); renderTabla();
+    showToast('✅ Registro enviado — espera la aprobación del administrador');
   } else {
-    renderPlayers(); renderTabla();
-    showToast(`✅ ${name} inscrito — ${fmtCLP(amount)}`);
+    const e = r && r.error;
+    showToast('❌ ' + (e === 'clave_corta' ? 'Clave muy corta' : e === 'nombre' ? 'Falta el nombre' : 'No se pudo registrar'));
   }
+}
+
+// Inscripción directa (solo modo LOCAL, sin servidor)
+function inscribePlayer() {
+  const data = readEnroll();
+  if (!data) return;
+  if (state.players.length >= SECURITY.MAX_PLAYERS) {
+    showToast(`⚠️ Máximo ${SECURITY.MAX_PLAYERS} participantes`); return;
+  }
+  state.players.push({ id: uid(), name: data.name, amount: data.amount });
+  saveState();
+  document.getElementById('enroll-name').value = '';
+  document.getElementById('enroll-amount').value = '';
+  document.getElementById('enroll-name').focus();
+  renderPlayers(); renderTabla();
+  showToast(`✅ ${data.name} inscrito — ${fmtCLP(data.amount)}`);
 }
 
 async function removePlayer(playerId) {
@@ -3148,6 +3261,16 @@ async function removePlayer(playerId) {
   }
   const player = state.players.find(p => p.id === playerId);
   const label = player ? getPlayerLabel(player, state.players.indexOf(player)) : 'este participante';
+
+  // Modo nube: el servidor elimina (y limpia predicciones)
+  if (cloudOn) {
+    const ok = await confirmModal('Eliminar participante', `¿Eliminar a "${label}" y todas sus predicciones?`, 'Sí, eliminar');
+    if (!ok) return;
+    if (await pushRemovePlayer(playerId)) { renderPlayers(); renderTabla(); showToast('🗑 Participante eliminado'); }
+    return;
+  }
+
+  // Modo local: comportamiento original con backup
   const ok = await confirmModal('Eliminar participante', `¿Eliminar a "${label}" y todas sus predicciones?\nSe guardará un backup automático antes.`, 'Sí, eliminar');
   if (!ok) return;
   createBackup('Antes de eliminar participante');
@@ -3158,9 +3281,7 @@ async function removePlayer(playerId) {
   Object.keys(state.koPreds).forEach(mid => {
     if (state.koPreds[mid]) delete state.koPreds[mid][playerId];
   });
-  const codes = loadCodes(); delete codes[playerId]; saveCodes(codes);
   saveState();
-  if (cloudOn) pushAdmin().then(() => { renderPlayers(); renderTabla(); });
   renderPlayers();
   renderTabla();
   renderBackupList();
@@ -3262,7 +3383,7 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
   preds.className = 'preds';
   const locked = isStarted(dateISO);
 
-  state.players.forEach((player, pIdx) => {
+  approvedPlayers().forEach((player, pIdx) => {
     const pred = (state.groupPreds[matchId] || {})[player.id] || '';
     const ptsClass = !result ? 'empty' : (pred === result ? 'win' : 'zero');
     const ptsText = !result ? '' : (pred === result ? '+3' : '0');
@@ -3408,7 +3529,7 @@ function setGroupResult(matchId, val, home, away) {
     state.groupResults[matchId] = val;
   }
   saveState();
-  if (cloudOn) pushAdmin();
+  if (cloudOn) pushResults();
   rebuildGroupCard(matchId, home, away);
   updateGroupsProgress();
   if (document.getElementById('ko-container').children.length > 0) {
@@ -3803,7 +3924,7 @@ function buildKOCard(matchId, t1, t2, phase, dateISO, venue) {
   const koLocked = isStarted(dateISO);
   const preds = document.createElement('div');
   preds.className = 'preds';
-  state.players.forEach((player, pIdx) => {
+  approvedPlayers().forEach((player, pIdx) => {
     const pred = (state.koPreds[matchId] || {})[player.id] || '';
     const ptsClass = !result ? 'empty' : (pred && pred === result ? 'win' : 'zero');
     const ptsText = !result ? '' : (pred && pred === result ? `+${phase.pts}` : '0');
@@ -3913,19 +4034,20 @@ function setKOResult(matchId, val, t1, t2, phase, dateISO, venue) {
   if (val) state.koResults[matchId] = val;
   else delete state.koResults[matchId];
   saveState();
-  if (cloudOn) pushAdmin();
+  if (cloudOn) pushResults();
   refreshAllKOCards();
   showToast(val ? '🏆 Resultado registrado — equipos avanzados' : '↺ Resultado borrado');
 }
 
 // ═════════════════ TABLA ═════════════════
 function calcPoints() {
-  const result = state.players.map((p, i) => ({
+  const ps = cloudOn ? approvedPlayers() : state.players;
+  const result = ps.map((p, i) => ({
     id: p.id, name: getPlayerLabel(p, i), amount: normalizeAmount(p.amount),
     g: 0, r32: 0, r16: 0, qf: 0, sf: 0, fin: 0, total: 0
   }));
   const idx = {};
-  state.players.forEach((p, i) => { idx[p.id] = i; });
+  ps.forEach((p, i) => { idx[p.id] = i; });
 
   Object.entries(state.groupResults).forEach(([mid, res]) => {
     const preds = state.groupPreds[mid] || {};
