@@ -4966,10 +4966,10 @@ function renderStats(stats) {
     if (h[k] == null && a[k] == null) return '';
     const hn = parseInt(String(h[k])) || 0, an = parseInt(String(a[k])) || 0, tot = (hn + an) || 1;
     return `<div class="live-stat">
-      <b class="sh">${h[k] ?? '-'}</b>
+      <b class="sh">${escapeHTML(h[k] ?? '-')}</b>
       <div class="live-stat-bars"><div class="lh" style="width:${hn / tot * 100}%"></div><div class="la" style="width:${an / tot * 100}%"></div></div>
-      <b class="sa">${a[k] ?? '-'}</b>
-      <span class="live-stat-lbl">${label}</span>
+      <b class="sa">${escapeHTML(a[k] ?? '-')}</b>
+      <span class="live-stat-lbl">${escapeHTML(label)}</span>
     </div>`;
   }).filter(Boolean).join('');
   if (!rows) return '';

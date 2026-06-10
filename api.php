@@ -14,6 +14,8 @@ declare(strict_types=1);
 
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: no-referrer');
+header('X-Frame-Options: DENY');
 header('Cache-Control: no-store');
 
 // ── Ubicación del archivo de datos ───────────────────────────────
@@ -29,6 +31,50 @@ if (!is_dir($DIR) || !is_writable($DIR)) {
   if (!file_exists($ht)) { @file_put_contents($ht, "Require all denied\nDeny from all\n"); }
 }
 $FILE = $DIR . '/state.json';
+
+// ── Seguridad: IP del cliente y rate limiting ────────────────────
+function clientIp(): string {
+  // Detrás de nginx/proxy la IP real suele venir en estas cabeceras
+  foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR'] as $h) {
+    if (!empty($_SERVER[$h])) {
+      $ip = trim(explode(',', $_SERVER[$h])[0]);
+      if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
+    }
+  }
+  return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+}
+
+// Limita acciones por IP. Devuelve true si se permite, false si excede.
+function rateAllow(string $dir, string $bucket, int $max, int $window): bool {
+  $file = $dir . '/rl_' . preg_replace('/[^a-z0-9]/i', '', $bucket) . '.json';
+  $fp = @fopen($file, 'c+');
+  if (!$fp) return true; // si no se puede registrar, no bloqueamos (fail-open)
+  $allowed = true;
+  if (flock($fp, LOCK_EX)) {
+    $raw = stream_get_contents($fp);
+    $data = json_decode($raw ?: '[]', true);
+    if (!is_array($data)) $data = [];
+    $ip = clientIp();
+    $now = time();
+    $list = array_values(array_filter($data[$ip] ?? [], fn($t) => is_int($t) && $t > $now - $window));
+    $allowed = count($list) < $max;
+    if ($allowed) $list[] = $now;
+    $data[$ip] = $list;
+    // Poda para que el archivo no crezca sin control
+    if (count($data) > 800) {
+      foreach ($data as $k => $v) {
+        $data[$k] = array_values(array_filter((array)$v, fn($t) => is_int($t) && $t > $now - 3600));
+        if (!$data[$k]) unset($data[$k]);
+      }
+    }
+    ftruncate($fp, 0); rewind($fp);
+    fwrite($fp, json_encode($data));
+    fflush($fp); flock($fp, LOCK_UN);
+  }
+  fclose($fp);
+  return $allowed;
+}
+function tooMany() { http_response_code(429); echo json_encode(['ok' => false, 'error' => 'rate_limit', 'msg' => 'Demasiados intentos, espera un momento.']); exit; }
 
 // ── Helpers ──────────────────────────────────────────────────────
 function blankState(): array {
@@ -136,6 +182,8 @@ function matchStarted(array $sched, string $matchId): bool {
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
 if ($method === 'GET') {
+  // Límite suave de lectura por IP (evita scraping agresivo)
+  if (!rateAllow($DIR, 'get', 240, 60)) tooMany();
   out(publicState(loadState($FILE)));
 }
 
@@ -144,13 +192,29 @@ if ($method !== 'POST') {
   out(['ok' => false, 'error' => 'método no permitido']);
 }
 
-$body = json_decode(file_get_contents('php://input'), true);
+// Límite global de escritura por IP
+if (!rateAllow($DIR, 'post', 120, 60)) tooMany();
+
+// Límite de tamaño del cuerpo (anti-DoS de memoria)
+$raw = file_get_contents('php://input', false, null, 0, 120000);
+if (strlen($raw) >= 120000) { http_response_code(413); out(['ok' => false, 'error' => 'payload_grande']); }
+$body = json_decode($raw, true);
 if (!is_array($body)) {
   http_response_code(400);
   out(['ok' => false, 'error' => 'json inválido']);
 }
 
 $op = (string)($body['op'] ?? '');
+
+// Límites específicos por operación sensible (anti fuerza bruta / spam)
+if (in_array($op, ['login', 'verifyAdmin', 'claimAdmin'], true)) {
+  // intentos de adivinar PIN/clave
+  if (!rateAllow($DIR, 'auth', 25, 600)) tooMany();   // 25 / 10 min
+}
+if ($op === 'register') {
+  if (!rateAllow($DIR, 'register', 8, 3600)) tooMany(); // 8 registros / hora
+}
+
 $state = loadState($FILE);
 
 switch ($op) {

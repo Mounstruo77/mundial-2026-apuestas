@@ -10,3 +10,6 @@ state.json
 # API key del panel en vivo (NO versionar)
 live-config.php
 live_cache/
+
+# claves
+*.key

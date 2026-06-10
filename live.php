@@ -12,13 +12,9 @@
 declare(strict_types=1);
 header('Content-Type: application/json; charset=utf-8');
 header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: no-referrer');
+header('X-Frame-Options: DENY');
 header('Cache-Control: no-store');
-
-$KEY = @include __DIR__ . '/live-config.php';
-if (!is_string($KEY) || $KEY === '') {
-  echo json_encode(['ok' => false, 'error' => 'no_key', 'msg' => 'Falta live-config.php con la API key']);
-  exit;
-}
 
 const API_BASE = 'https://v3.football.api-sports.io';
 const WC_LEAGUE = 1;
@@ -32,6 +28,41 @@ $CACHE = $DIR . '/live_cache';
 if (!@is_dir($CACHE)) { @mkdir($CACHE, 0775, true); }
 
 function out($p) { echo json_encode($p, JSON_UNESCAPED_UNICODE); exit; }
+
+// ── API key: primero un archivo FUERA del web root; si no, live-config.php ──
+$KEY = '';
+$keyFile = $DIR . '/apifootball.key';
+if (is_file($keyFile)) { $KEY = trim((string)@file_get_contents($keyFile)); }
+if ($KEY === '') { $k = @include __DIR__ . '/live-config.php'; if (is_string($k)) $KEY = trim($k); }
+if ($KEY === '') { out(['ok' => false, 'error' => 'no_key', 'msg' => 'Falta la API key (apifootball.key)']); }
+
+// ── Rate limit por IP (evita agotar la cuota de la API) ──────────────
+function clientIp(): string {
+  foreach (['HTTP_CF_CONNECTING_IP', 'HTTP_X_REAL_IP', 'HTTP_X_FORWARDED_FOR'] as $h) {
+    if (!empty($_SERVER[$h])) {
+      $ip = trim(explode(',', $_SERVER[$h])[0]);
+      if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
+    }
+  }
+  return $_SERVER['REMOTE_ADDR'] ?? '0.0.0.0';
+}
+function rateAllow(string $dir, string $bucket, int $max, int $window): bool {
+  $file = $dir . '/rl_' . preg_replace('/[^a-z0-9]/i', '', $bucket) . '.json';
+  $fp = @fopen($file, 'c+'); if (!$fp) return true;
+  $allowed = true;
+  if (flock($fp, LOCK_EX)) {
+    $data = json_decode(stream_get_contents($fp) ?: '[]', true); if (!is_array($data)) $data = [];
+    $ip = clientIp(); $now = time();
+    $list = array_values(array_filter($data[$ip] ?? [], fn($t) => is_int($t) && $t > $now - $window));
+    $allowed = count($list) < $max;
+    if ($allowed) $list[] = $now;
+    $data[$ip] = $list;
+    if (count($data) > 800) { foreach ($data as $k => $v) { $data[$k] = array_values(array_filter((array)$v, fn($t) => is_int($t) && $t > $now - 3600)); if (!$data[$k]) unset($data[$k]); } }
+    ftruncate($fp, 0); rewind($fp); fwrite($fp, json_encode($data)); fflush($fp); flock($fp, LOCK_UN);
+  }
+  fclose($fp); return $allowed;
+}
+if (!rateAllow($DIR, 'live', 90, 60)) { http_response_code(429); out(['ok' => false, 'error' => 'rate_limit']); }
 
 function apiGet(string $path, string $key) {
   $ch = curl_init(API_BASE . $path);
@@ -167,17 +198,22 @@ function ttlForStatus(string $short): int {
 }
 
 // ── Router ───────────────────────────────────────────────────────────
+$fixtures = fixturesList($KEY, $CACHE);
+$wcIds = array_flip(array_map(fn($f) => (int)($f['fixture']['id'] ?? 0), $fixtures));
+
 $fixtureId = isset($_GET['fixture']) ? (int)$_GET['fixture'] : 0;
 
-if ($fixtureId <= 0) {
-  // Emparejar por equipos (+ hora opcional)
-  $homeApi = (string)($_GET['home'] ?? '');
-  $awayApi = (string)($_GET['away'] ?? '');
-  $kickoff = (string)($_GET['kickoff'] ?? ''); // 'YYYY-MM-DDTHH:mm' hora de México
+if ($fixtureId > 0) {
+  // Solo se permiten fixtures del Mundial (evita usar la cuota para cualquier partido)
+  if (!isset($wcIds[$fixtureId])) out(['ok' => false, 'error' => 'fixture_no_permitido', 'found' => false]);
+} else {
+  // Emparejar por equipos (+ hora opcional). Límites de longitud anti-abuso.
+  $homeApi = mb_substr((string)($_GET['home'] ?? ''), 0, 40);
+  $awayApi = mb_substr((string)($_GET['away'] ?? ''), 0, 40);
+  $kickoff = mb_substr((string)($_GET['kickoff'] ?? ''), 0, 20); // 'YYYY-MM-DDTHH:mm'
   if ($homeApi === '' || $awayApi === '') out(['ok' => false, 'error' => 'params']);
   $kickoffUtc = null;
   if ($kickoff !== '') { $t = strtotime($kickoff . ':00-06:00'); if ($t) $kickoffUtc = $t; }
-  $fixtures = fixturesList($KEY, $CACHE);
   $fixtureId = findFixtureId($fixtures, $homeApi, $awayApi, $kickoffUtc) ?? 0;
   if ($fixtureId <= 0) out(['ok' => true, 'found' => false]);
 }
