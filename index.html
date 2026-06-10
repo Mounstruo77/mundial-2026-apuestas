@@ -1884,14 +1884,14 @@
   </div>
 
   <div class="action-bar">
-    <button class="btn btn-primary" onclick="showTab('grupos')">Comenzar apuestas →</button>
+    <button class="btn btn-primary" id="start-btn" onclick="showTab('grupos')">Comenzar apuestas →</button>
     <button class="btn btn-secondary admin-toggle" id="admin-toggle" onclick="toggleAdmin()">🔒 Modo administrador</button>
     <button class="btn btn-secondary" id="backup-btn" onclick="manualBackup()">💾 Guardar backup</button>
     <span id="admin-tools" style="display:none;gap:.55rem;flex-wrap:wrap;align-items:center">
       <button class="btn btn-secondary" id="change-pin-btn" onclick="changeAdminPin()">🔑 Cambiar PIN</button>
       <button class="btn btn-secondary" onclick="resetAll()">↻ Reiniciar todo</button>
     </span>
-    <span class="meta-row">💾 <span class="count">Guardado automático</span></span>
+    <span class="meta-row" id="autosave-note">💾 <span class="count">Guardado automático</span></span>
   </div>
 
   <div class="card">
@@ -2835,6 +2835,13 @@ function updateIdentityUI() {
   if (backupBtn) backupBtn.style.display = isAdmin ? '' : 'none';
   const backupsCard = document.getElementById('backups-card');
   if (backupsCard) backupsCard.style.display = isAdmin ? '' : 'none';
+
+  // En vista pública (sin iniciar sesión) ocultamos "Comenzar apuestas" y "Guardado automático"
+  const isPublic = !isAdmin && !myPlayer();
+  const startBtn = document.getElementById('start-btn');
+  if (startBtn) startBtn.style.display = isPublic ? 'none' : '';
+  const autosaveNote = document.getElementById('autosave-note');
+  if (autosaveNote) autosaveNote.style.display = isPublic ? 'none' : '';
 
   const icon = document.getElementById('identity-icon');
   const title = document.getElementById('identity-title');
