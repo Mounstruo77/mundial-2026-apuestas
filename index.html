@@ -1666,6 +1666,8 @@
   }
   .modal-body:empty { display: none; }
   .modal-field { margin-bottom: 1rem; }
+  .reg-fields { display: grid; gap: .55rem; margin-bottom: 1rem; }
+  .reg-fields .enroll-amount, .reg-fields .enroll-amount .enroll-input { width: 100%; }
   .modal-field input {
     width: 100%;
     background: var(--bg-soft);
@@ -1990,6 +1992,25 @@
     <div class="modal-actions">
       <button class="btn btn-secondary" id="modal-cancel" type="button">Cancelar</button>
       <button class="btn btn-primary" id="modal-ok" type="button">Aceptar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reg-overlay" aria-hidden="true">
+  <div class="modal" role="dialog" aria-modal="true">
+    <div class="modal-title">Registro de jugador</div>
+    <div class="modal-body">Crea tu cuenta para participar. Quedará pendiente de aprobación del administrador.</div>
+    <div class="reg-fields">
+      <input id="reg-name" class="enroll-input" type="text" placeholder="Tu nombre" maxlength="22" autocomplete="off">
+      <div class="enroll-amount">
+        <span class="enroll-prefix">$</span>
+        <input id="reg-amount" class="enroll-input" type="number" inputmode="numeric" min="10000" step="1000" placeholder="Monto (mín. 10.000)">
+      </div>
+      <input id="reg-pass" class="enroll-input" type="password" placeholder="Crea tu clave (mín. 4)" maxlength="20" autocomplete="off">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="reg-cancel" type="button">Cancelar</button>
+      <button class="btn btn-primary" id="reg-ok" type="button">Registrarme</button>
     </div>
   </div>
 </div>
@@ -2951,12 +2972,59 @@ async function openIdentityPicker() {
   await loginAsPlayer(player);
 }
 
-// "Regístrese": lleva al formulario de registro y enfoca el primer campo
-function goRegister() {
-  showTab('jugadores');
-  const form = document.getElementById('enroll-form');
-  if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  setTimeout(() => document.getElementById('enroll-name')?.focus(), 350);
+// "Regístrese": abre el modal de registro
+function goRegister() { openRegisterModal(); }
+
+// Núcleo del registro (lo usa el modal). Devuelve true si quedó registrado.
+async function doRegister(rawName, rawAmount, rawCode) {
+  const name = SECURITY.sanitizeName(rawName);
+  if (!name) { showToast('⚠️ Escribe tu nombre'); return false; }
+  const code = (rawCode || '').trim();
+  if (code.length < 4) { showToast('⚠️ Tu clave debe tener al menos 4 caracteres'); return false; }
+  const amount = normalizeAmount(rawAmount);
+  const r = await apiPost({ op: 'register', name, amount, code });
+  if (r && r.ok) {
+    myId = r.playerId; myCode = code; isAdmin = false; saveMe();
+    if (r.state) applyServerState(r.state);
+    updateIdentityUI(); renderPlayers(); renderTabla();
+    showToast('✅ Registro enviado — espera la aprobación del administrador');
+    return true;
+  }
+  const e = r && r.error;
+  showToast('❌ ' + (e === 'clave_corta' ? 'Clave muy corta' : e === 'nombre' ? 'Falta el nombre' : 'No se pudo registrar'));
+  return false;
+}
+
+function openRegisterModal() {
+  if (!cloudOn) { showToast('Sin servidor: modo local'); return; }
+  if (myId) { showToast('Ya estás registrado'); return; }
+  const ov = document.getElementById('reg-overlay');
+  const nameEl = document.getElementById('reg-name');
+  const amtEl  = document.getElementById('reg-amount');
+  const passEl = document.getElementById('reg-pass');
+  const okBtn  = document.getElementById('reg-ok');
+  const cancelBtn = document.getElementById('reg-cancel');
+  nameEl.value = ''; amtEl.value = ''; passEl.value = '';
+  ov.classList.add('show'); ov.setAttribute('aria-hidden', 'false');
+  setTimeout(() => nameEl.focus(), 60);
+
+  const close = () => {
+    ov.classList.remove('show'); ov.setAttribute('aria-hidden', 'true');
+    okBtn.onclick = cancelBtn.onclick = ov.onclick = nameEl.onkeydown = passEl.onkeydown = null;
+  };
+  const submit = async () => {
+    const raw = amtEl.value.trim();
+    const rawAmt = Math.round(Number(raw));
+    if (raw !== '' && (!Number.isFinite(rawAmt) || rawAmt < MIN_BET)) {
+      showToast(`⚠️ El monto mínimo es ${fmtCLP(MIN_BET)}`); amtEl.focus(); return;
+    }
+    const ok = await doRegister(nameEl.value, raw === '' ? MIN_BET : rawAmt, passEl.value);
+    if (ok) close();
+  };
+  okBtn.onclick = submit;
+  cancelBtn.onclick = close;
+  ov.onclick = (e) => { if (e.target === ov) close(); };
+  passEl.onkeydown = (e) => { if (e.key === 'Enter') submit(); };
 }
 
 function logoutIdentity() {
@@ -3211,10 +3279,11 @@ function renderPlayers() {
   const passEl = document.getElementById('enroll-pass');
   const enrollBtn = document.getElementById('enroll-btn');
   if (enroll) {
-    const showForm = cloudOn ? (!isAdmin && !myId) : true;
-    enroll.style.display = showForm ? 'grid' : 'none';
-    if (passEl) passEl.style.display = cloudOn ? 'block' : 'none';
-    if (enrollBtn) enrollBtn.textContent = cloudOn ? '＋ Registrarme' : '＋ Inscribir';
+    // En la nube el registro es por modal (botón "Regístrese"); el formulario
+    // inline solo se usa en modo local (sin servidor).
+    enroll.style.display = cloudOn ? 'none' : 'grid';
+    if (passEl) passEl.style.display = 'none';
+    if (enrollBtn) enrollBtn.textContent = '＋ Inscribir';
   }
 
   // ── Pendientes de aprobación (solo admin) ──
@@ -3250,7 +3319,7 @@ function renderPlayers() {
     const empty = document.createElement('div');
     empty.className = 'players-empty';
     empty.textContent = cloudOn
-      ? (isAdmin ? 'Aún no hay jugadores aprobados.' : 'Aún no hay jugadores. ¡Regístrate arriba! 👆')
+      ? (isAdmin ? 'Aún no hay jugadores aprobados.' : 'Aún no hay jugadores. Usa el botón “Regístrese” para participar.')
       : 'Aún no hay participantes. Usa el formulario de arriba. 👆';
     list.appendChild(empty);
   }
