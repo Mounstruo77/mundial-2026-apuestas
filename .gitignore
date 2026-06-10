@@ -6,3 +6,7 @@ Thumbs.db
 data/
 mw26_data/
 state.json
+
+# API key del panel en vivo (NO versionar)
+live-config.php
+live_cache/
