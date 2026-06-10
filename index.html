@@ -1852,8 +1852,8 @@
     <div class="identity-sub" id="identity-sub"></div>
   </div>
   <div class="identity-actions">
-    <button id="identity-action" class="btn btn-primary btn-sm" onclick="openIdentityPicker()">Entrar como jugador</button>
-    <button id="identity-admin" class="btn btn-secondary btn-sm" onclick="toggleAdmin()">👑 Administrador</button>
+    <button id="identity-action" class="btn btn-primary btn-sm">📝 Regístrese</button>
+    <button id="identity-admin" class="btn btn-secondary btn-sm">🔑 Login de usuario</button>
     <button id="identity-logout" class="btn btn-secondary btn-sm" onclick="exitSession()">Salir</button>
   </div>
 </div>
@@ -2874,40 +2874,22 @@ function updateIdentityUI() {
     icon.textContent = '👤';
     title.textContent = `Juegas como ${meP.name}`;
     sub.textContent = 'Haz tus apuestas en Grupos y Eliminación. Solo tú ves tus picks hasta que empieza cada partido.';
-    actionBtn.style.display = ''; actionBtn.textContent = 'Cambiar jugador';
+    actionBtn.style.display = ''; actionBtn.textContent = 'Cambiar jugador'; actionBtn.onclick = openIdentityPicker;
     adminBtn.style.display = 'none';
     logoutBtn.style.display = ''; logoutBtn.textContent = 'Salir';
   } else {
     bar.classList.add('is-public');
     icon.textContent = '👁️';
     title.textContent = 'Vista pública';
-    sub.textContent = 'Mira los partidos, la tabla y las apuestas que se revelan al empezar cada partido. Inicia sesión para participar.';
-    actionBtn.style.display = ''; actionBtn.textContent = 'Entrar como jugador';
-    adminBtn.style.display = '';
+    sub.textContent = 'Mira los partidos, la tabla y las apuestas que se revelan al empezar cada partido. Regístrate o inicia sesión para participar.';
+    actionBtn.style.display = ''; actionBtn.textContent = '📝 Regístrese';   actionBtn.onclick = goRegister;
+    adminBtn.style.display  = ''; adminBtn.textContent  = '🔑 Login de usuario'; adminBtn.onclick = openLogin;
     logoutBtn.style.display = 'none';
   }
 }
 
-async function openIdentityPicker() {
-  if (!cloudOn) { showToast('Sin servidor: modo local'); return; }
-  const aprob = approvedPlayers();
-  if (!aprob.length) { showToast('Aún no hay jugadores aprobados'); return; }
-
-  // Lista de nombres para tocar (botón por jugador aprobado)
-  const choiceId = await showModal({
-    title: '¿Quién eres?',
-    body: 'Toca tu nombre en la lista:',
-    choices: aprob.map(p => ({
-      label: p.name || '(sin nombre)',
-      value: p.id,
-      hint: p.hasCode ? '🔒 clave' : '',
-    })),
-    cancelText: 'Cancelar',
-  });
-  if (choiceId === null) return;
-  const player = aprob.find(p => p.id === choiceId);
-  if (!player) { showToast('Jugador no encontrado'); return; }
-
+// Pide la clave (si tiene) y entra como ese jugador
+async function loginAsPlayer(player) {
   let code = '';
   if (player.hasCode) {
     const c = await showModal({
@@ -2922,13 +2904,59 @@ async function openIdentityPicker() {
     myId = player.id; myCode = code; isAdmin = false; adminPin = '';
     saveMe();
     updateIdentityUI();
-    renderPlayers(); renderGroups();
+    renderPlayers(); renderTabla(); renderGroups();
     if (typeof _tabRendered !== 'undefined') _tabRendered.delete('eliminacion');
     renderKO();
     showToast(`✅ Entraste como ${player.name}`);
+  } else if (r && r.error === 'pendiente') {
+    showToast('⏳ Tu registro aún no está aprobado');
   } else {
-    showToast('❌ Código incorrecto');
+    showToast('❌ Clave incorrecta');
   }
+}
+
+// "Login de usuario": lista de jugadores aprobados + opción de administrador
+async function openLogin() {
+  if (!cloudOn) { showToast('Sin servidor: modo local'); return; }
+  const aprob = approvedPlayers();
+  const choices = aprob.map(p => ({ label: p.name || '(sin nombre)', value: 'p:' + p.id, hint: p.hasCode ? '🔒 clave' : '' }));
+  choices.push({ label: '👑 Administrador', value: 'admin', hint: 'PIN' });
+  const choice = await showModal({
+    title: 'Login de usuario',
+    body: aprob.length ? 'Toca tu nombre, o entra como administrador:' : 'Aún no hay jugadores. Entra como administrador o regístrate primero.',
+    choices,
+    cancelText: 'Cancelar',
+  });
+  if (choice === null) return;
+  if (choice === 'admin') { toggleAdmin(); return; }
+  const player = aprob.find(p => p.id === choice.slice(2));
+  if (!player) { showToast('Jugador no encontrado'); return; }
+  await loginAsPlayer(player);
+}
+
+// Cambiar de jugador (solo lista de jugadores, sin admin)
+async function openIdentityPicker() {
+  if (!cloudOn) { showToast('Sin servidor: modo local'); return; }
+  const aprob = approvedPlayers();
+  if (!aprob.length) { showToast('Aún no hay jugadores aprobados'); return; }
+  const choiceId = await showModal({
+    title: '¿Quién eres?',
+    body: 'Toca tu nombre en la lista:',
+    choices: aprob.map(p => ({ label: p.name || '(sin nombre)', value: p.id, hint: p.hasCode ? '🔒 clave' : '' })),
+    cancelText: 'Cancelar',
+  });
+  if (choiceId === null) return;
+  const player = aprob.find(p => p.id === choiceId);
+  if (!player) { showToast('Jugador no encontrado'); return; }
+  await loginAsPlayer(player);
+}
+
+// "Regístrese": lleva al formulario de registro y enfoca el primer campo
+function goRegister() {
+  showTab('jugadores');
+  const form = document.getElementById('enroll-form');
+  if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setTimeout(() => document.getElementById('enroll-name')?.focus(), 350);
 }
 
 function logoutIdentity() {
