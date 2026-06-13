@@ -1,0 +1,4 @@
+live-config.php
+state.json
+*.log
+.claude/

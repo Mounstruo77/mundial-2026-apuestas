@@ -1,0 +1,26 @@
+# Seguridad — Mundial 2026 Apuestas
+# (Apache lo respeta; en nginx puro se ignora, por eso la seguridad real va en PHP.)
+
+# Cabeceras de seguridad
+<IfModule mod_headers.c>
+  Header set X-Content-Type-Options "nosniff"
+  Header set X-Frame-Options "DENY"
+  Header set Referrer-Policy "no-referrer"
+  Header set Permissions-Policy "geolocation=(), microphone=(), camera=()"
+</IfModule>
+
+# No listar directorios
+Options -Indexes
+
+# Bloquear acceso directo a archivos sensibles
+<FilesMatch "\.(key|bak|log|json)$">
+  Require all denied
+</FilesMatch>
+<Files "live-config.php">
+  Require all denied
+</Files>
+
+# Excepción: schedule.json sí es público (solo horarios)
+<Files "schedule.json">
+  Require all granted
+</Files>
