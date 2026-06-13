@@ -5520,7 +5520,7 @@ function renderEvents(events, teams, kitColors = {}) {
   const rows = events.slice().reverse().map(e => {
     const min = `${e.minute ?? ''}${e.extra ? '+' + e.extra : ''}'`;
     const txt = e.type === 'subst'
-      ? `↑ ${escapeHTML(e.assist || '?')} / ↓ ${escapeHTML(e.player || '?')}`
+      ? `<span style="color:#00c853;font-weight:700">↑</span> ${escapeHTML(e.assist || '?')} / <span style="color:#ff4757;font-weight:700">↓</span> ${escapeHTML(e.player || '?')}`
       : `<b>${escapeHTML(e.player || '')}</b>${e.assist ? ` · ${escapeHTML(e.assist)}` : ''} · ${escapeHTML(e.detail || e.type)}`;
     const borderColor = e.side === 'home' ? (kitColors.home || '#4d8af0') : (kitColors.away || '#ff4757');
     const primary   = e.side === 'home' ? (kitColors.home || '#4d8af0') : (kitColors.away || '#ff4757');
