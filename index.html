@@ -1989,7 +1989,7 @@
 
   .live-section-title { font-family: 'Anton', sans-serif; font-size: 1rem; letter-spacing: .03em; color: var(--neon); text-transform: uppercase; margin: .8rem 0 .5rem; }
   .live-events { display: grid; gap: .3rem; max-height: 220px; overflow-y: auto; }
-  .live-ev { display: grid; grid-template-columns: 42px 26px 26px 22px 1fr; align-items: center; gap: .5rem; font-size: .8rem; padding: .35rem .5rem; background: var(--bg-soft); border-radius: 7px; border-left: 3px solid var(--blue); }
+  .live-ev { display: grid; grid-template-columns: 40px 22px 1fr 26px 26px; align-items: center; gap: .5rem; font-size: .8rem; padding: .35rem .5rem; background: var(--bg-soft); border-radius: 7px; border-left: 3px solid var(--blue); }
   .live-ev-jersey { display: flex; align-items: center; justify-content: center; }
   .live-ev-jersey svg { filter: drop-shadow(0 1px 2px rgba(0,0,0,.4)); }
   .live-ev.away { border-left-color: var(--red); }
@@ -5528,10 +5528,10 @@ function renderEvents(events, teams, kitColors = {}) {
     const jerseyNum = e.type === 'subst' ? (e.assist_number ?? null) : (e.player_number ?? null);
     return `<div class="live-ev ${e.side}" style="border-left-color:${borderColor}">
       <span class="live-ev-min">${min}</span>
-      <span class="live-ev-flag">${flagFor(e.side)}</span>
-      <span class="live-ev-jersey">${evJersey(jerseyNum, primary, secondary)}</span>
       <span class="live-ev-ic">${icon(e)}</span>
       <span class="live-ev-txt">${txt}</span>
+      <span class="live-ev-jersey">${evJersey(jerseyNum, primary, secondary)}</span>
+      <span class="live-ev-flag">${flagFor(e.side)}</span>
     </div>`;
   }).join('');
   return `<div class="live-section-title">⚡ Jugadas</div><div class="live-events">${rows}</div>`;
