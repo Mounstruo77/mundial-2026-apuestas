@@ -373,6 +373,17 @@ switch ($op) {
     out(['ok' => true, 'updatedAt' => $state['updatedAt'] ?? 0]);
   }
 
+  // Admin guarda la API key de API-Football en el servidor
+  case 'setApiKey': {
+    $pin = (string)($body['pin'] ?? '');
+    if (!checkAdmin($state, $pin)) { http_response_code(403); out(['ok' => false, 'error' => 'pin']); }
+    $key = trim((string)($body['key'] ?? ''));
+    if (!preg_match('/^[a-zA-Z0-9]{20,64}$/', $key)) out(['ok' => false, 'error' => 'key_invalida']);
+    $keyFile = $DIR . '/apifootball.key';
+    if (@file_put_contents($keyFile, $key) === false) out(['ok' => false, 'error' => 'write']);
+    out(['ok' => true]);
+  }
+
   default:
     http_response_code(400);
     out(['ok' => false, 'error' => 'op_desconocida']);

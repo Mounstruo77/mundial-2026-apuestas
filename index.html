@@ -2185,6 +2185,7 @@
     <button class="btn btn-secondary" id="backup-btn" onclick="manualBackup()">💾 Guardar backup</button>
     <span id="admin-tools" style="display:none;gap:.55rem;flex-wrap:wrap;align-items:center">
       <button class="btn btn-secondary" id="change-pin-btn" onclick="changeAdminPin()">🔑 Cambiar PIN</button>
+      <button class="btn btn-secondary" onclick="setApiKey()">🌐 API Key</button>
       <button class="btn btn-secondary" onclick="resetAll()">↻ Reiniciar todo</button>
     </span>
     <span class="meta-row" id="autosave-note">💾 <span class="count">Guardado automático</span></span>
@@ -2950,6 +2951,23 @@ async function toggleAdminLocal() {
   } else {
     showToast('❌ PIN incorrecto');
   }
+}
+
+async function setApiKey() {
+  if (!isAdmin) { showToast('🔒 Activa el modo administrador primero'); return; }
+  const key = await showModal({
+    title: 'API Key — API-Football',
+    body: 'Pega aquí la API key de api-sports.io (se guarda en el servidor):',
+    input: true, inputType: 'text',
+    placeholder: 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+    okText: 'Guardar'
+  });
+  if (key === null) return;
+  const k = key.trim();
+  if (k.length < 20) { showToast('⚠️ Key demasiado corta (mínimo 20 caracteres)'); return; }
+  const res = await apiPost({ op: 'setApiKey', pin: adminPin, key: k });
+  if (res?.ok) showToast('✅ API Key guardada en el servidor');
+  else showToast('❌ Error al guardar: ' + (res?.error || 'desconocido'));
 }
 
 async function changeAdminPin() {
