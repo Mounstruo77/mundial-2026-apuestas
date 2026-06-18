@@ -5105,12 +5105,12 @@ function applyResultList(matches) {
     if (mid) recordMatchStatus(mid, m.status);
     if (!DONE.includes(m.status)) return;
     if (typeof m.gh !== 'number' || typeof m.ga !== 'number') return;
-    // Guardar score real para mostrarlo en el banner
+    // Guardar score real para mostrarlo en el vs-pill
     if (mid) {
       let sc = `${m.gh}-${m.ga}`;
       if (m.status === 'AET') sc += ' (AET)';
       else if (m.status === 'PEN' && m.ph != null && m.pa != null) sc += ` (${m.ph}-${m.pa} PEN)`;
-      state.matchScores[mid] = sc;
+      if (state.matchScores[mid] !== sc) { state.matchScores[mid] = sc; updated++; }
     }
     const result = m.gh > m.ga ? '1' : m.gh < m.ga ? '2' : 'X';
     if (applyGroupResult(homeES, awayES, result)) { updated++; return; }
@@ -5379,8 +5379,8 @@ const LIVE_STATUSES = ['1H','2H','HT','ET','BT','P','LIVE','INT'];
 // Mapa nombre español (app) → nombre exacto en API-Football
 const TEAM_ES_TO_API = {
   'Argelia':'Algeria','Argentina':'Argentina','Australia':'Australia','Austria':'Austria',
-  'Bélgica':'Belgium','Bosnia':'Bosnia & Herzegovina','Brasil':'Brazil','Canadá':'Canada',
-  'Cabo Verde':'Cape Verde Islands','Colombia':'Colombia','RD Congo':'Congo DR','Croacia':'Croatia',
+  'Bélgica':'Belgium','Bosnia':'Bosnia and Herzegovina','Brasil':'Brazil','Canadá':'Canada',
+  'Cabo Verde':'Cape Verde','Colombia':'Colombia','RD Congo':'DR Congo','Croacia':'Croatia',
   'Curazao':'Curaçao','Rep. Checa':'Czech Republic','Ecuador':'Ecuador','Egipto':'Egypt',
   'Inglaterra':'England','Francia':'France','Alemania':'Germany','Ghana':'Ghana','Haití':'Haiti',
   'Irán':'Iran','Irak':'Iraq','Costa de Marfil':'Ivory Coast','Japón':'Japan','Jordania':'Jordan',
@@ -5388,7 +5388,7 @@ const TEAM_ES_TO_API = {
   'Noruega':'Norway','Panamá':'Panama','Paraguay':'Paraguay','Portugal':'Portugal','Catar':'Qatar',
   'Arabia Saudita':'Saudi Arabia','Escocia':'Scotland','Senegal':'Senegal','Sudáfrica':'South Africa',
   'Corea del Sur':'South Korea','España':'Spain','Suecia':'Sweden','Suiza':'Switzerland','Túnez':'Tunisia',
-  'Turquía':'Türkiye','EE.UU.':'USA','Uruguay':'Uruguay','Uzbekistán':'Uzbekistan',
+  'Turquía':'Türkiye','EE.UU.':'United States','Uruguay':'Uruguay','Uzbekistán':'Uzbekistan',
 };
 function teamToApi(es) { return TEAM_ES_TO_API[es] || es; }
 
@@ -5448,7 +5448,7 @@ function renderLive(d) {
     const es = API_TO_ES[t.name];
     return `<div class="live-team">
       <div class="live-team-icons">${es ? flag(es) : ''}${jerseyIcon(null, primary, secondary)}</div>
-      <span>${escapeHTML(t.name)}</span>
+      <span>${escapeHTML(es || t.name)}</span>
     </div>`;
   };
   const header = `
@@ -5524,6 +5524,15 @@ function renderPitch(lu) {
 // Mapa inverso: nombre API → nombre español (para banderas)
 const API_TO_ES = {};
 Object.entries(TEAM_ES_TO_API).forEach(([es, api]) => { API_TO_ES[api] = es; });
+// Variantes adicionales de nombres en API-Football (nombres alternativos / históricos)
+[['Turkey','Turquía'],['Bosnia & Herzegovina','Bosnia'],['Bosnia and Herzegovina','Bosnia'],
+ ['Cape Verde Islands','Cabo Verde'],['Cape Verde','Cabo Verde'],
+ ['United States','EE.UU.'],['USA','EE.UU.'],
+ ['Congo DR','RD Congo'],['DR Congo','RD Congo'],
+ ['Korea Republic','Corea del Sur'],['Republic of Korea','Corea del Sur'],
+ ['Ivory Coast','Costa de Marfil'],["Côte d'Ivoire",'Costa de Marfil'],
+ ['New Zealand','Nueva Zelanda'],['Czech Republic','Rep. Checa'],
+].forEach(([api, es]) => { if (!API_TO_ES[api]) API_TO_ES[api] = es; });
 
 function renderEvents(events, teams, kitColors = {}) {
   if (!events || !events.length) return '<div class="live-note">Sin jugadas registradas aún.</div>';
