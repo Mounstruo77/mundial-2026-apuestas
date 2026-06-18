@@ -4184,8 +4184,8 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
 
   const finished = isFinished(dateISO);
   const resultLabels = { '1': home, 'X': 'Empate', '2': away };
-  if (finished || (cloudOn && !isAdmin)) {
-    // Bloqueado (partido terminado) o usuario normal: solo lectura
+  if (!isAdmin && (finished || cloudOn)) {
+    // Solo lectura para usuarios normales
     const winnerName = result ? (resultLabels[result] || result) : null;
     const winnerFlag = result && result !== 'X' ? flag(resultLabels[result]) : (result === 'X' ? '🤝' : '');
     real.innerHTML = `
