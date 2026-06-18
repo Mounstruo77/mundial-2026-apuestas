@@ -4094,9 +4094,10 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
   const toggleRow = document.createElement('div');
   toggleRow.className = 'preds-toggle';
   toggleRow.innerHTML = `<span class="preds-toggle-label">Apuestas</span><span class="preds-toggle-chevron">▼</span>`;
+  const matchDone = !!result || isFinished(dateISO);
   toggleRow.onclick = () => {
     const nowHidden = card.classList.toggle('preds-hidden');
-    if (result) {
+    if (matchDone) {
       if (nowHidden) expandedPredCards.delete(matchId);
       else expandedPredCards.add(matchId);
     } else {
@@ -4104,7 +4105,7 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
       else collapsedPredCards.delete(matchId);
     }
   };
-  const isCollapsed = result ? !expandedPredCards.has(matchId) : collapsedPredCards.has(matchId);
+  const isCollapsed = matchDone ? !expandedPredCards.has(matchId) : collapsedPredCards.has(matchId);
   if (isCollapsed) card.classList.add('preds-hidden');
   card.appendChild(toggleRow);
 
