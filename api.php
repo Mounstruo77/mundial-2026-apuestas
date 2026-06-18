@@ -82,6 +82,7 @@ function blankState(): array {
     'players'      => [],
     'groupPreds'   => new stdClass(),
     'groupResults' => new stdClass(),
+    'matchScores'  => new stdClass(),
     'koPreds'      => new stdClass(),
     'koResults'    => new stdClass(),
     'firstBetAt'   => new stdClass(),
@@ -105,7 +106,7 @@ function loadState(string $FILE): array {
 function saveState(string $FILE, array $s): bool {
   $s['updatedAt'] = (int) round(microtime(true) * 1000);
   // Forzamos que los diccionarios vacíos se serialicen como {} y no como []
-  foreach (['groupPreds','groupResults','koPreds','koResults'] as $k) {
+  foreach (['groupPreds','groupResults','matchScores','koPreds','koResults'] as $k) {
     if (empty($s[$k])) $s[$k] = new stdClass();
   }
   $json = json_encode($s, JSON_UNESCAPED_UNICODE);
@@ -148,6 +149,7 @@ function publicState(array $s): array {
     'players'      => $players,
     'groupPreds'   => $s['groupPreds']   ?? new stdClass(),
     'groupResults' => $s['groupResults'] ?? new stdClass(),
+    'matchScores'  => $s['matchScores']  ?? new stdClass(),
     'koPreds'      => $s['koPreds']      ?? new stdClass(),
     'koResults'    => $s['koResults']    ?? new stdClass(),
     'firstBetAt'   => $s['firstBetAt']  ?? new stdClass(),
@@ -313,6 +315,7 @@ switch ($op) {
     if (!checkAdmin($state, $pin)) { http_response_code(403); out(['ok' => false, 'error' => 'pin']); }
     if (isset($body['groupResults']) && is_array($body['groupResults'])) $state['groupResults'] = $body['groupResults'];
     if (isset($body['koResults'])    && is_array($body['koResults']))    $state['koResults']    = $body['koResults'];
+    if (isset($body['matchScores'])  && is_array($body['matchScores']))  $state['matchScores']  = $body['matchScores'];
     saveState($FILE, $state);
     out(['ok' => true, 'state' => publicState($state)]);
   }

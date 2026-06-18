@@ -1170,6 +1170,7 @@
     gap: .4rem;
   }
   .frb-empty { font-size: .78rem; color: var(--muted); font-style: italic; font-weight: 400; }
+  .frb-score { font-family: 'JetBrains Mono', monospace; font-size: .88rem; font-weight: 800; color: var(--neon); background: rgba(0,200,83,.12); border: 1px solid rgba(0,200,83,.25); padding: .18rem .55rem; border-radius: 7px; white-space: nowrap; }
 
   /* KO select locked */
   .fdd-trigger[aria-disabled="true"] {
@@ -2692,6 +2693,7 @@ const defaultState = () => ({
   players: [],            // { id, name, amount }  — se inscriben con monto
   groupPreds: {},
   groupResults: {},
+  matchScores: {},         // matchId → "gh-ga" con sufijo opcional "(AET)"/"(PEN x-y)"
   koPreds: {},
   koResults: {},
   firstBetAt: {},         // playerId → timestamp ms de su primera apuesta (desempate)
@@ -3070,6 +3072,9 @@ function applyServerState(srv) {
   const srvKR = coerce(srv.koResults);
   state.groupResults = { ...state.groupResults, ...srvGR };
   state.koResults    = { ...state.koResults,    ...srvKR };
+  if (srv.matchScores && typeof srv.matchScores === 'object') {
+    state.matchScores = { ...state.matchScores, ...srv.matchScores };
+  }
   // Timestamps de primera apuesta (desempate en Score Apuestas)
   if (srv.firstBetAt && typeof srv.firstBetAt === 'object') {
     state.firstBetAt = { ...state.firstBetAt, ...srv.firstBetAt };
@@ -3210,7 +3215,7 @@ async function adminOp(payload) {
   } catch (e) { showToast('❌ Sin conexión con el servidor'); return false; }
   finally { pushingAdmin = false; }
 }
-async function pushResults()                   { return adminOp({ op: 'results', groupResults: state.groupResults, koResults: state.koResults }); }
+async function pushResults()                   { return adminOp({ op: 'results', groupResults: state.groupResults, koResults: state.koResults, matchScores: state.matchScores }); }
 async function pushSetAmount(playerId, amount) { return adminOp({ op: 'setAmount', playerId, amount }); }
 async function pushRemovePlayer(playerId)      { return adminOp({ op: 'removePlayer', playerId }); }
 async function approvePlayer(playerId) {
@@ -4154,12 +4159,16 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
     // Bloqueado (partido terminado) o usuario normal: solo lectura
     const winnerName = result ? (resultLabels[result] || result) : null;
     const winnerFlag = result && result !== 'X' ? flag(resultLabels[result]) : (result === 'X' ? '🤝' : '');
+    const score = state.matchScores[matchId] || null;
     real.innerHTML = `
       <div class="final-result-banner">
-        <span class="frb-label">${finished ? 'Resultado final' : 'Resultado real'}</span>
-        ${winnerName
-          ? `<span class="frb-value">${winnerFlag} ${escapeHTML(winnerName)}</span>`
-          : `<span class="frb-empty">Sin resultado registrado</span>`}
+        <div style="display:flex;flex-direction:column;gap:.1rem">
+          <span class="frb-label">${finished ? 'Resultado final' : 'Resultado real'}</span>
+          ${winnerName
+            ? `<span class="frb-value">${winnerFlag} ${escapeHTML(winnerName)}</span>`
+            : `<span class="frb-empty">Sin resultado registrado</span>`}
+        </div>
+        ${score ? `<span class="frb-score">${escapeHTML(score)}</span>` : ''}
       </div>`;
   } else {
     real.innerHTML = `
@@ -5080,6 +5089,13 @@ function applyResultList(matches) {
     if (mid) recordMatchStatus(mid, m.status);
     if (!DONE.includes(m.status)) return;
     if (typeof m.gh !== 'number' || typeof m.ga !== 'number') return;
+    // Guardar score real para mostrarlo en el banner
+    if (mid) {
+      let sc = `${m.gh}-${m.ga}`;
+      if (m.status === 'AET') sc += ' (AET)';
+      else if (m.status === 'PEN' && m.ph != null && m.pa != null) sc += ` (${m.ph}-${m.pa} PEN)`;
+      state.matchScores[mid] = sc;
+    }
     const result = m.gh > m.ga ? '1' : m.gh < m.ga ? '2' : 'X';
     if (applyGroupResult(homeES, awayES, result)) { updated++; return; }
     // Eliminatoria: gana por goles; si empatan, por penales
