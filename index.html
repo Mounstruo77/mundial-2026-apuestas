@@ -2191,6 +2191,7 @@
     <button class="btn btn-secondary admin-toggle" id="admin-toggle" onclick="toggleAdmin()">🔒 Modo administrador</button>
     <button class="btn btn-secondary" id="backup-btn" onclick="manualBackup()">💾 Guardar backup</button>
     <span id="admin-tools" style="display:none;gap:.55rem;flex-wrap:wrap;align-items:center">
+      <button class="btn btn-secondary" onclick="syncFromAPI(true)">🔄 Sincronizar</button>
       <button class="btn btn-secondary" id="change-pin-btn" onclick="changeAdminPin()">🔑 Cambiar PIN</button>
       <button class="btn btn-secondary" onclick="setApiKey()">🌐 API Key</button>
       <button class="btn btn-secondary" onclick="resetAll()">↻ Reiniciar todo</button>
