@@ -986,7 +986,7 @@
     color: var(--muted);
     text-align: center;
     min-width: 48px;
-    max-width: 110px;
+    max-width: 140px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1171,6 +1171,12 @@
   }
   .frb-empty { font-size: .78rem; color: var(--muted); font-style: italic; font-weight: 400; }
   .frb-score { font-family: 'JetBrains Mono', monospace; font-size: .88rem; font-weight: 800; color: var(--neon); background: rgba(0,200,83,.12); border: 1px solid rgba(0,200,83,.25); padding: .18rem .55rem; border-radius: 7px; white-space: nowrap; }
+  .preds-toggle { display: flex; align-items: center; justify-content: space-between; padding: .28rem .5rem; cursor: pointer; user-select: none; border-radius: 6px; margin-top: .25rem; }
+  .preds-toggle:hover { background: rgba(255,255,255,.04); }
+  .preds-toggle-label { font-size: .68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); }
+  .preds-toggle-chevron { font-size: .65rem; color: var(--muted); transition: transform .2s; }
+  .match-card.preds-hidden .preds-toggle-chevron { transform: rotate(-90deg); }
+  .match-card.preds-hidden .preds { display: none; }
 
   /* KO select locked */
   .fdd-trigger[aria-disabled="true"] {
@@ -3026,6 +3032,7 @@ let serverHasAdmin = false;   // ¿el servidor ya tiene PIN admin?
 let adminPin       = '';      // PIN admin en memoria (no se persiste)
 let myId           = null;    // jugador que soy (usuario normal)
 let myCode         = '';      // su código
+const collapsedPredCards = new Set(); // matchIds con apuestas ocultas
 let lastUpdatedAt  = 0;       // marca para el sondeo
 let pollTimer      = null;
 let pushingAdmin   = false;
@@ -4071,15 +4078,28 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
   meta.appendChild(lbG);
   card.appendChild(meta);
 
+  const score = state.matchScores[matchId] || null;
+
   const header = document.createElement('div');
   header.className = 'match-header';
   header.innerHTML = `
     <div class="team home"><span>${escapeHTML(home)}</span><span class="team-flag">${flag(home)}</span>${jerseyIcon(home)}</div>
-    <div class="vs-pill ${result ? 'has-result' : ''}">${result || 'VS'}</div>
+    <div class="vs-pill ${result ? 'has-result' : ''}">${score ? escapeHTML(score) : (result || 'VS')}</div>
     <div class="team away">${jerseyIcon(away)}<span class="team-flag">${flag(away)}</span><span>${escapeHTML(away)}</span></div>
   `;
   card.appendChild(header);
   mountInlineLive(card, matchId, home, away, dateISO);
+
+  const toggleRow = document.createElement('div');
+  toggleRow.className = 'preds-toggle';
+  toggleRow.innerHTML = `<span class="preds-toggle-label">Apuestas</span><span class="preds-toggle-chevron">▼</span>`;
+  toggleRow.onclick = () => {
+    const hidden = card.classList.toggle('preds-hidden');
+    if (hidden) collapsedPredCards.add(matchId);
+    else collapsedPredCards.delete(matchId);
+  };
+  if (collapsedPredCards.has(matchId)) card.classList.add('preds-hidden');
+  card.appendChild(toggleRow);
 
   const preds = document.createElement('div');
   preds.className = 'preds';
@@ -4159,16 +4179,12 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
     // Bloqueado (partido terminado) o usuario normal: solo lectura
     const winnerName = result ? (resultLabels[result] || result) : null;
     const winnerFlag = result && result !== 'X' ? flag(resultLabels[result]) : (result === 'X' ? '🤝' : '');
-    const score = state.matchScores[matchId] || null;
     real.innerHTML = `
       <div class="final-result-banner">
-        <div style="display:flex;flex-direction:column;gap:.1rem">
-          <span class="frb-label">${finished ? 'Resultado final' : 'Resultado real'}</span>
-          ${winnerName
-            ? `<span class="frb-value">${winnerFlag} ${escapeHTML(winnerName)}</span>`
-            : `<span class="frb-empty">Sin resultado registrado</span>`}
-        </div>
-        ${score ? `<span class="frb-score">${escapeHTML(score)}</span>` : ''}
+        <span class="frb-label">${finished ? 'Resultado final' : 'Resultado real'}</span>
+        ${winnerName
+          ? `<span class="frb-value">${winnerFlag} ${escapeHTML(winnerName)}</span>`
+          : `<span class="frb-empty">Sin resultado registrado</span>`}
       </div>`;
   } else {
     real.innerHTML = `
