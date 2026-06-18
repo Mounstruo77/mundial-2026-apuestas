@@ -3032,7 +3032,8 @@ let serverHasAdmin = false;   // ¿el servidor ya tiene PIN admin?
 let adminPin       = '';      // PIN admin en memoria (no se persiste)
 let myId           = null;    // jugador que soy (usuario normal)
 let myCode         = '';      // su código
-const collapsedPredCards = new Set(); // matchIds con apuestas ocultas
+const collapsedPredCards = new Set(); // partidos sin resultado que el usuario colapso
+const expandedPredCards  = new Set(); // partidos con resultado que el usuario expandio
 let lastUpdatedAt  = 0;       // marca para el sondeo
 let pollTimer      = null;
 let pushingAdmin   = false;
@@ -4094,11 +4095,17 @@ function buildGroupCard(matchId, home, away, dateISO, venue) {
   toggleRow.className = 'preds-toggle';
   toggleRow.innerHTML = `<span class="preds-toggle-label">Apuestas</span><span class="preds-toggle-chevron">▼</span>`;
   toggleRow.onclick = () => {
-    const hidden = card.classList.toggle('preds-hidden');
-    if (hidden) collapsedPredCards.add(matchId);
-    else collapsedPredCards.delete(matchId);
+    const nowHidden = card.classList.toggle('preds-hidden');
+    if (result) {
+      if (nowHidden) expandedPredCards.delete(matchId);
+      else expandedPredCards.add(matchId);
+    } else {
+      if (nowHidden) collapsedPredCards.add(matchId);
+      else collapsedPredCards.delete(matchId);
+    }
   };
-  if (collapsedPredCards.has(matchId)) card.classList.add('preds-hidden');
+  const isCollapsed = result ? !expandedPredCards.has(matchId) : collapsedPredCards.has(matchId);
+  if (isCollapsed) card.classList.add('preds-hidden');
   card.appendChild(toggleRow);
 
   const preds = document.createElement('div');
