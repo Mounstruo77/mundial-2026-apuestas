@@ -1,4 +1,8 @@
 live-config.php
 state.json
 *.log
+error_log
+*.key
+data/
+live_cache/
 .claude/

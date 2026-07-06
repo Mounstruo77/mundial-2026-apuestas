@@ -1,24 +1,38 @@
 # ⚽ Mundial 2026 — Apuestas
 
-App web de apuestas para el Mundial 2026 entre amigos. Sin registro, sin servidor, funciona directo en el navegador.
+App web de apuestas para el Mundial 2026 entre amigos: frontend en un solo
+`index.html` (vanilla JS) + un backend PHP mínimo que comparte el estado entre
+todos los participantes y hace de proxy a API-Football para resultados en vivo.
 
 ## 🚀 Ver la app
 
-👉 **[mounstruo77.github.io/mundial-2026-apuestas](https://mounstruo77.github.io/mundial-2026-apuestas)**
+👉 **https://drsoporte.cl/mundial/**
+
+## 🧱 Arquitectura
+
+| Archivo | Rol |
+|---|---|
+| `index.html` | Toda la interfaz y la lógica de juego (vanilla JS, sin dependencias) |
+| `api.php` | Estado compartido: jugadores, apuestas, resultados. Persiste en un JSON fuera del web root, con locks de archivo |
+| `live.php` | Proxy con caché a [API-Football](https://www.api-football.com/) (marcadores en vivo, calendario KO, goleadores, arqueros, posiciones) |
+| `schedule.json` | Horario `matchId → kickoff` (hora CDMX): candado del servidor para bloquear apuestas una vez iniciado cada partido |
+| `.htaccess` | Cabeceras de seguridad, bloqueo de archivos sensibles y `Cache-Control` de `index.html` |
+
+**No versionados** (secretos/datos): `live-config.php` (API key), `apifootball.key`,
+`state.json` (apuestas de los usuarios), carpetas de caché.
 
 ## ✨ Funciones
 
-- 👥 **Inscripción con monto** — cada participante entra con su nombre y su apuesta (mínimo **$10.000 CLP**, sin tope)
-- 💰 **Pozo y premios** — el pozo es la suma de todos los montos y se reparte entre 1°, 2° y 3° lugar
-- 🔒 **Participantes fijos** — una vez inscrito nadie puede borrarte; **solo el administrador (con PIN)** elimina participantes
-- ⚽ **72 partidos de grupos** — predicciones Local / Empate / Visita
-- 🏆 **Eliminación completa** — 16avos → Octavos → Cuartos → Semis → Final
-- 🔄 **Bracket automático** — los ganadores avanzan solos de fase en fase
-- 🌐 **Resultados automáticos** — sincroniza con openfootball/worldcup.json
-- 🕐 **Horario Chile** — todas las horas en America/Santiago
-- 🔒 **Apuestas bloqueadas** al iniciar cada partido
-- 💾 **Backups automáticos** — nunca pierdas tus datos
-- 📊 **Tabla general** con podio 🥇🥈🥉 en tiempo real
+- 👥 **Registro con aprobación** — cada participante se inscribe con nombre, monto y clave; el admin aprueba
+- 💰 **Pozo y premios** — el pozo suma todos los montos (mínimo **$10.000 CLP**) y se reparte 70/20/10 ponderado por monto apostado
+- ⚽ **72 partidos de grupos** — predicción Local / Empate / Visita
+- 🏆 **Eliminación completa** — 16avos → Octavos → Cuartos → Semis → 3er lugar → Final, con bracket que avanza solo
+- 🌐 **Resultados automáticos** — API-Football vía `live.php` (respaldo: openfootball/worldcup.json)
+- 📊 **Estadísticas en vivo** — posiciones oficiales, top goleadores y top arqueros del torneo
+- 📺 **Panel en vivo por partido** — marcador, alineaciones, eventos y estadísticas
+- 🕐 **Horario Chile** — el calendario interno va en hora CDMX (UTC-6) y se muestra en America/Santiago
+- 🔒 **Apuestas bloqueadas al inicio de cada partido**, validado en cliente **y** servidor
+- 🔄 **Auto-actualización** — la página detecta versiones nuevas y se recarga sola
 
 ## 📋 Sistema de puntos
 
@@ -34,19 +48,39 @@ App web de apuestas para el Mundial 2026 entre amigos. Sin registro, sin servido
 
 ## 💰 Premios del pozo
 
-El **pozo** es la suma de todos los montos apostados. Al terminar el Mundial se reparte entre los 3 primeros de la Tabla General, **ponderado por el monto apostado** (quien apuesta más y entra al podio gana proporcionalmente más):
-
 | Lugar | % posición |
 |---|---|
 | 🥇 1° Lugar | 70 % |
 | 🥈 2° Lugar | 20 % |
 | 🥉 3° Lugar | 10 % |
 
-> El premio de cada uno se calcula como `% de su posición × su monto apostado`, normalizado al pozo total. Así el reparto siempre suma el 100 % del pozo.
+> El premio de cada uno se calcula como `% de su posición × su monto apostado`,
+> normalizado al pozo total, así el reparto siempre suma el 100 % del pozo.
 
-## 🔑 Administrador
+## 🔐 Seguridad
 
-El borrado de participantes está protegido con un **PIN de administrador** (se configura la primera vez desde el botón *Modo administrador* en la pestaña Jugadores). Sin el PIN solo se puede inscribir y apostar, no eliminar. Es una protección pensada para evitar borrados accidentales entre amigos.
+- PIN de admin y claves de jugador guardadas **hasheadas** (SHA-256 con sal fija de app)
+- Cada usuario solo puede escribir **su propia** predicción (verificación de clave por request)
+- Rate-limiting por IP en lecturas, escrituras, auth y registro
+- Validación de entrada en servidor (formato de `matchId`, valores de apuesta, montos)
+- Datos y API key fuera del web root; `.htaccess` bloquea archivos sensibles
+- El estado público expone solo hashes reducidos a "tiene/no tiene clave"
+
+## 🛠 Desarrollo local
+
+```bash
+php -S localhost:3737
+# abre http://localhost:3737
+```
+
+Sin `live-config.php`/`apifootball.key` el panel en vivo y las estadísticas
+quedan deshabilitados, pero la app de apuestas funciona igual.
+
+## 📦 Despliegue
+
+Subir por FTP al hosting (Apache + PHP 8): `index.html`, `api.php`, `live.php`,
+`schedule.json`, `.htaccess`. La API key va en `<data>/apifootball.key` o en
+`live-config.php` (retorna el string de la key), nunca al repositorio.
 
 ---
 Hecho con ❤️ para el Mundial 2026 🏆

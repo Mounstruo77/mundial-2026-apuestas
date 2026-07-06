@@ -289,6 +289,7 @@ switch ($op) {
         if (is_array($byPlayer) && isset($byPlayer[$id])) unset($state[$pk][$mid][$id]);
       }
     }
+    if (isset($state['firstBetAt'][$id])) unset($state['firstBetAt'][$id]);
     saveState($FILE, $state);
     out(['ok' => true, 'state' => publicState($state)]);
   }
@@ -355,7 +356,16 @@ switch ($op) {
     if (!empty($player['codeHash']) && !hash_equals((string)$player['codeHash'], h($code))) {
       http_response_code(403); out(['ok' => false, 'error' => 'codigo']);
     }
-    if ($mid === '') { http_response_code(400); out(['ok' => false, 'error' => 'match']); }
+    // matchId con formato conocido (evita claves arbitrarias en el estado)
+    if (!preg_match('/^(g_\d{1,2}_\d{1,2}|ko_(r32|r16|qf|sf|3rd|final)_\d{1,2})$/', $mid)) {
+      http_response_code(400); out(['ok' => false, 'error' => 'match']);
+    }
+    // Valor con formato válido: grupos 1/X/2; eliminatoria nombre de equipo corto
+    if ($scope === 'groupPreds') {
+      if (!in_array($val, ['', '1', 'X', '2'], true)) { http_response_code(400); out(['ok' => false, 'error' => 'valor']); }
+    } else {
+      if ($val !== '' && !preg_match('/^[\p{L}\p{M}0-9 .\'\-]{1,30}$/u', $val)) { http_response_code(400); out(['ok' => false, 'error' => 'valor']); }
+    }
     // Regla del juego: no se puede crear/modificar la predicción una vez empezado el partido
     if (matchStarted($SCHEDULE, $mid)) { http_response_code(403); out(['ok' => false, 'error' => 'cerrado']); }
 
